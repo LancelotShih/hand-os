@@ -13,6 +13,7 @@ A small Python tool to detect and read a **TDK/InvenSense ICM-20948**
 | `icm20948_main.py` | The polling loop (`poll_loop`, `run_read`) and line formatters, plus a no-frills stream runner you can execute directly. |
 | `icm20948_cli.py` | The full `buses` / `scan` / `whoami` / `read` command-line tool; pure argument parsing and dispatch. |
 | `icm20948.py` | Backwards-compatible facade: re-exports the names above and forwards `./icm20948.py …` to the CLI. |
+| `ak09916_selftest.py` | Standalone AK09916 magnetometer self-test: energises the mag die's internal coil and checks the reading against datasheet bounds. |
 | `imu_web.py` + `imu_dashboard.html` | Optional live browser dashboard built on the driver. |
 
 Dependency direction: `registers` <- `driver` / `i2c` <- `main` <- `cli`.
@@ -74,6 +75,19 @@ Just the polling loop, no subcommands (`icm20948_main.py`):
 `read` / `icm20948_main.py` options: `--accel-range {2,4,8,16}` g,
 `--gyro-range {250,500,1000,2000}` dps, `-n/--count`, `-r/--rate`, `--mag`,
 `--raw`, `--no-reset`.
+
+Magnetometer self-test (`ak09916_selftest.py`):
+
+```bash
+./ak09916_selftest.py                 # bus 1, ICM @ 0x68; prints per-axis pass/fail
+./ak09916_selftest.py -b 1 -a 0x69
+./ak09916_selftest.py --restore       # re-enable 100 Hz continuous mode afterwards
+```
+
+Exit code is `0` on PASS, `1` on FAIL, `2` if the test could not run. The internal
+coil field is Z-dominant, so a healthy part reads ~0 on X/Y and roughly -60 uT on
+Z (datasheet window: X/Y within +/-200 LSB, Z within -1000..-200 LSB). A pass is a
+functional check only -- it is **not** a hard/soft-iron calibration.
 
 ## As a library
 
