@@ -19,6 +19,11 @@ Dependency direction: `registers` <- `driver` / `i2c` <- `main` <- `cli`.
 
 ## One-time setup (Raspberry Pi 5)
 
+### Hardware setup
+On the ICM20948 board, aside from the obvious 3.3V, GND, and SDA/SCL connections, you need to also tie AD0 to GND to set I2C to address `0b1101000` (`0x68`) and nCS pin to 3.3V to maintain I2C mode
+
+### Software setup
+
 The 40-pin header I2C bus is disabled by default. Enable it and reboot:
 
 ```bash
