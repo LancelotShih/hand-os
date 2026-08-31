@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICM-20948 Live</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --good:           #0ca30c;
+    --critical:       #d03b3b;
+    --series-x:       #2a78d6; /* categorical slot 1 - blue */
+    --series-y:       #eb6834; /* categorical slot 2 - orange */
+    --series-z:       #1baf7a; /* categorical slot 3 - aqua */
+    --series-t:       #2a78d6; /* single-series temp trend reuses slot 1 */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-x:       #3987e5;
+      --series-y:       #d95926;
+      --series-z:       #199e70;
+      --series-t:       #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 48px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0; }
+  .meta { color: var(--text-secondary); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex: none; }
+  .status.ok .dot { background: var(--good); }
+  .status.bad .dot { background: var(--critical); }
+  .status.ok { color: var(--good); }
+  .status.bad { color: var(--critical); }
+
+  .controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 14px 0 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .seg button { border: none; background: transparent; color: var(--text-secondary); font: inherit; font-size: 12.5px; padding: 5px 10px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.active { background: var(--series-x); color: #fff; }
+  .btn { border: 1px solid var(--border); border-radius: 7px; background: var(--surface-1); color: var(--text-secondary); font: inherit; font-size: 12.5px; padding: 5px 10px; cursor: pointer; }
+  .btn.active { background: var(--series-x); color: #fff; border-color: var(--series-x); }
+  label.field { font-size: 12.5px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; }
+
+  .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px 10px; margin-bottom: 16px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 6px; }
+  .panel-title { font-size: 13.5px; font-weight: 600; }
+  .panel-title .unit { font-weight: 400; color: var(--text-secondary); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend-item .swatch { width: 10px; height: 2px; border-radius: 1px; }
+  .legend-item .val { font-variant-numeric: tabular-nums; color: var(--text-primary); min-width: 5.5em; text-align: right; }
+
+  .chart-box { position: relative; }
+  canvas { display: block; width: 100%; height: 210px; }
+  .crosshair-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--baseline); pointer-events: none; opacity: 0; }
+  .tooltip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); opacity: 0; white-space: nowrap; z-index: 5; }
+  .tooltip .row { display: flex; align-items: center; gap: 6px; }
+  .tooltip .key { width: 10px; height: 2px; border-radius: 1px; flex: none; }
+  .tooltip .name { color: var(--text-secondary); }
+  .tooltip .value { font-variant-numeric: tabular-nums; font-weight: 600; margin-left: auto; padding-left: 10px; }
+  .tooltip .time { color: var(--text-muted); font-size: 11px; margin-bottom: 3px; }
+
+  .stat-row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; flex: 1 1 220px; }
+  .stat-tile .label { font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px; }
+  .stat-tile .value { font-size: 32px; font-weight: 600; }
+  .stat-tile .value .unit { font-size: 15px; font-weight: 400; color: var(--text-secondary); }
+  .stat-tile canvas { height: 40px; margin-top: 6px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-muted); font-weight: 600; }
+  #tableSection { display: none; overflow-x: auto; }
+
+  footer { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>ICM-20948 Live</h1>
+      <div class="meta" id="metaLine">connecting&hellip;</div>
+    </div>
+    <span class="status" id="status"><span class="dot"></span><span id="statusText">connecting</span></span>
+  </header>
+
+  <div class="controls">
+    <label class="field">Window
+      <span class="seg" id="windowSeg">
+        <button data-s="5">5s</button>
+        <button data-s="10" class="active">10s</button>
+        <button data-s="30">30s</button>
+      </span>
+    </label>
+    <button class="btn" id="pauseBtn">Pause</button>
+    <button class="btn" id="tableBtn">Table</button>
+  </div>
+
+  <div class="panel" id="panel-accel">
+    <div class="panel-head">
+      <div class="panel-title">Accelerometer <span class="unit">g</span></div>
+      <div class="legend" id="legend-accel"></div>
+    </div>
+    <div class="chart-box">
+      <canvas></canvas>
+      <div class="crosshair-line"></div>
+      <div class="tooltip"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-gyro">
+    <div class="panel-head">
+      <div class="panel-title">Gyroscope <span class="unit">&deg;/s</span></div>
+      <div class="legend" id="legend-gyro"></div>
+    </div>
+    <div class="chart-box">
+      <canvas></canvas>
+      <div class="crosshair-line"></div>
+      <div class="tooltip"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-mag" style="display:none">
+    <div class="panel-head">
+      <div class="panel-title">Magnetometer <span class="unit">&micro;T</span></div>
+      <div class="legend" id="legend-mag"></div>
+    </div>
+    <div class="chart-box">
+      <canvas></canvas>
+      <div class="crosshair-line"></div>
+      <div class="tooltip"></div>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-tile">
+      <div class="label">Temperature</div>
+      <div class="value"><span id="tempValue">&mdash;</span><span class="unit">&deg;C</span></div>
+      <canvas id="tempSpark"></canvas>
+    </div>
+  </div>
+
+  <div class="panel" id="tableSection">
+    <div class="panel-head"><div class="panel-title">Recent samples</div></div>
+    <table>
+      <thead><tr id="tableHead"></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <footer>Streaming from /stream (Server-Sent Events) &middot; window scrolls with new samples &middot; hover a chart for exact values.</footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const AXES = ["x", "y", "z"];
+  const COLORS = { x: "var(--series-x)", y: "var(--series-y)", z: "var(--series-z)" };
+  // resolved actual colors (canvas can't read CSS vars directly)
+  const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  let cfg = { rate: 30, mag: false, bus: 1, address: 0x68 };
+  let windowSeconds = 10;
+  let paused = false;
+  let showTable = false;
+
+  const MAX_KEEP = 60; // seconds of history kept client-side regardless of window
+
+  const series = {
+    accel: { x: [], y: [], z: [] },
+    gyro:  { x: [], y: [], z: [] },
+    mag:   { x: [], y: [], z: [] },
+  };
+  const tempSeries = []; // [{t, v}]
+  let latestT = null;
+  let lastSample = null;
+
+  function pushPoint(store, t, vec) {
+    AXES.forEach((ax, i) => store[ax].push({ t, v: vec[i] }));
+  }
+
+  function trim(list, minT) {
+    while (list.length && list[0].t < minT) list.shift();
+  }
+
+  function trimAll(t) {
+    const minT = t - MAX_KEEP;
+    AXES.forEach(ax => { trim(series.accel[ax], minT); trim(series.gyro[ax], minT); trim(series.mag[ax], minT); });
+    trim(tempSeries, minT);
+  }
+
+  // ---- SSE ----
+  function connect() {
+    const es = new EventSource("/stream");
+    es.onmessage = (ev) => {
+      const s = JSON.parse(ev.data);
+      lastSample = s;
+      latestT = s.t;
+      pushPoint(series.accel, s.t, s.accel);
+      pushPoint(series.gyro, s.t, s.gyro);
+      if (s.mag) pushPoint(series.mag, s.t, s.mag);
+      tempSeries.push({ t: s.t, v: s.temp });
+      trimAll(s.t);
+      if (showTable) pushTableRow(s);
+    };
+    es.addEventListener("status", (ev) => {
+      const st = JSON.parse(ev.data);
+      setStatus(st.connected, st.error);
+    });
+    es.onerror = () => setStatus(false, "stream interrupted, reconnecting…");
+  }
+
+  function setStatus(ok, error) {
+    const el = document.getElementById("status");
+    const txt = document.getElementById("statusText");
+    el.className = "status " + (ok ? "ok" : "bad");
+    txt.textContent = ok ? "Connected" : ("Disconnected" + (error ? " — " + error : ""));
+  }
+
+  fetch("/meta").then(r => r.json()).then(m => {
+    cfg = m;
+    document.getElementById("metaLine").textContent =
+      `bus ${m.bus} · addr 0x${m.address.toString(16).toUpperCase()} · ±${m.accel_range}g · ±${m.gyro_range}°/s · ~${m.rate} Hz`;
+    if (m.mag) document.getElementById("panel-mag").style.display = "";
+    buildLegend("legend-accel", "accel");
+    buildLegend("legend-gyro", "gyro");
+    if (m.mag) buildLegend("legend-mag", "mag");
+    buildTableHead(m.mag);
+    connect();
+  }).catch(() => connect());
+
+  // ---- legend ----
+  function buildLegend(containerId, key) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = "";
+    AXES.forEach(ax => {
+      const item = document.createElement("div");
+      item.className = "legend-item";
+      const sw = document.createElement("span");
+      sw.className = "swatch";
+      sw.style.background = COLORS[ax];
+      const name = document.createElement("span");
+      name.textContent = ax.toUpperCase();
+      const val = document.createElement("span");
+      val.className = "val";
+      val.id = `legend-${key}-${ax}`;
+      val.textContent = "—";
+      item.append(sw, name, val);
+      el.appendChild(item);
+    });
+  }
+
+  function updateLegendValues() {
+    if (!lastSample) return;
+    AXES.forEach((ax, i) => {
+      const a = document.getElementById(`legend-accel-${ax}`);
+      if (a) a.textContent = lastSample.accel[i].toFixed(3);
+      const g = document.getElementById(`legend-gyro-${ax}`);
+      if (g) g.textContent = lastSample.gyro[i].toFixed(2);
+      if (lastSample.mag) {
+        const m = document.getElementById(`legend-mag-${ax}`);
+        if (m) m.textContent = lastSample.mag[i].toFixed(2);
+      }
+    });
+    document.getElementById("tempValue").textContent = lastSample.temp.toFixed(1);
+  }
+
+  // ---- table ----
+  function buildTableHead(mag) {
+    const head = document.getElementById("tableHead");
+    const cols = ["time", "ax (g)", "ay (g)", "az (g)", "gx (°/s)", "gy (°/s)", "gz (°/s)"];
+    if (mag) cols.push("mx (µT)", "my (µT)", "mz (µT)");
+    cols.push("temp (°C)");
+    head.innerHTML = "";
+    cols.forEach(c => { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); });
+  }
+
+  function pushTableRow(s) {
+    const body = document.getElementById("tableBody");
+    const tr = document.createElement("tr");
+    const cells = [new Date(s.t * 1000).toLocaleTimeString(),
+      ...s.accel.map(v => v.toFixed(3)), ...s.gyro.map(v => v.toFixed(2))];
+    if (s.mag) cells.push(...s.mag.map(v => v.toFixed(2)));
+    cells.push(s.temp.toFixed(1));
+    cells.forEach(text => { const td = document.createElement("td"); td.textContent = text; tr.appendChild(td); });
+    body.insertBefore(tr, body.firstChild);
+    while (body.rows.length > 15) body.deleteRow(body.rows.length - 1);
+  }
+
+  // ---- controls ----
+  document.getElementById("windowSeg").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    document.querySelectorAll("#windowSeg button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    windowSeconds = parseFloat(btn.dataset.s);
+  });
+  document.getElementById("pauseBtn").addEventListener("click", (e) => {
+    paused = !paused;
+    e.target.classList.toggle("active", paused);
+    e.target.textContent = paused ? "Resume" : "Pause";
+  });
+  document.getElementById("tableBtn").addEventListener("click", (e) => {
+    showTable = !showTable;
+    e.target.classList.toggle("active", showTable);
+    document.getElementById("tableSection").style.display = showTable ? "" : "none";
+  });
+
+  // ---- chart rendering ----
+  function setupChart(panelId, key, fmt) {
+    const panel = document.getElementById(panelId);
+    const box = panel.querySelector(".chart-box");
+    const canvas = box.querySelector("canvas");
+    const crosshair = box.querySelector(".crosshair-line");
+    const tooltip = box.querySelector(".tooltip");
+    const ctx = canvas.getContext("2d");
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    }
+
+    function draw() {
+      resize();
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const W = rect.width, H = rect.height;
+      const padL = 42, padR = 10, padT = 6, padB = 18;
+      const plotW = Math.max(1, W - padL - padR);
+      const plotH = Math.max(1, H - padT - padB);
+
+      ctx.clearRect(0, 0, W, H);
+      if (latestT === null) return;
+
+      const t1 = latestT, t0 = latestT - windowSeconds;
+      let minV = Infinity, maxV = -Infinity;
+      AXES.forEach(ax => {
+        for (const p of series[key][ax]) {
+          if (p.t < t0) continue;
+          if (p.v < minV) minV = p.v;
+          if (p.v > maxV) maxV = p.v;
+        }
+      });
+      if (!isFinite(minV)) { minV = -1; maxV = 1; }
+      if (maxV - minV < 1e-6) { minV -= 0.5; maxV += 0.5; }
+      const pad = (maxV - minV) * 0.15;
+      minV -= pad; maxV += pad;
+
+      const xOf = (t) => padL + ((t - t0) / (t1 - t0)) * plotW;
+      const yOf = (v) => padT + (1 - (v - minV) / (maxV - minV)) * plotH;
+
+      // gridlines
+      ctx.strokeStyle = cssColor("--grid");
+      ctx.lineWidth = 1;
+      ctx.fillStyle = cssColor("--text-muted");
+      ctx.font = "11px system-ui, sans-serif";
+      ctx.textBaseline = "middle";
+      const ticks = 4;
+      for (let i = 0; i <= ticks; i++) {
+        const v = minV + (maxV - minV) * (i / ticks);
+        const y = yOf(v);
+        ctx.beginPath();
+        ctx.moveTo(padL, Math.round(y) + 0.5);
+        ctx.lineTo(padL + plotW, Math.round(y) + 0.5);
+        ctx.stroke();
+        ctx.textAlign = "right";
+        ctx.fillText(fmt(v), padL - 6, y);
+      }
+      // zero baseline, if in range
+      if (minV < 0 && maxV > 0) {
+        ctx.strokeStyle = cssColor("--baseline");
+        const y = Math.round(yOf(0)) + 0.5;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+      }
+      // time ticks
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      [0, 0.5, 1].forEach(f => {
+        const t = t0 + (t1 - t0) * f;
+        const label = f === 1 ? "now" : `-${Math.round((t1 - t) * 10) / 10}s`;
+        ctx.fillText(label, xOf(t), padT + plotH + 4);
+      });
+
+      // series lines
+      AXES.forEach(ax => {
+        const pts = series[key][ax].filter(p => p.t >= t0);
+        if (pts.length < 1) return;
+        ctx.strokeStyle = cssColor(COLORS[ax].slice(4, -1)); // "var(--x)" -> "--x"
+        ctx.lineWidth = 2;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = xOf(p.t), y = yOf(p.v);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        // end marker: filled dot with a surface-color ring
+        const last = pts[pts.length - 1];
+        const x = xOf(last.t), y = yOf(last.v);
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = cssColor("--surface-1"); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = cssColor(COLORS[ax].slice(4, -1)); ctx.fill();
+      });
+
+      chart._range = { t0, t1, minV, maxV, padL, plotW };
+    }
+
+    // hover crosshair + tooltip
+    box.addEventListener("mousemove", (e) => {
+      const r = chart._range;
+      if (!r) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      if (x < r.padL || x > r.padL + r.plotW) { hide(); return; }
+      const t = r.t0 + ((x - r.padL) / r.plotW) * (r.t1 - r.t0);
+      // find nearest sample by time using the x axis
+      let nearest = null, best = Infinity;
+      for (const p of series[key].x) {
+        const d = Math.abs(p.t - t);
+        if (d < best) { best = d; nearest = p.t; }
+      }
+      if (nearest === null) { hide(); return; }
+      crosshair.style.opacity = 1;
+      crosshair.style.left = (r.padL + ((nearest - r.t0) / (r.t1 - r.t0)) * r.plotW) + "px";
+
+      tooltip.innerHTML = "";
+      const timeRow = document.createElement("div");
+      timeRow.className = "time";
+      timeRow.textContent = `-${(latestT - nearest).toFixed(2)}s`;
+      tooltip.appendChild(timeRow);
+      AXES.forEach(ax => {
+        const p = series[key][ax].find(p => p.t === nearest);
+        if (!p) return;
+        const row = document.createElement("div");
+        row.className = "row";
+        const keyEl = document.createElement("span");
+        keyEl.className = "key";
+        keyEl.style.background = cssColor(COLORS[ax].slice(4, -1));
+        const name = document.createElement("span");
+        name.className = "name"; name.textContent = ax.toUpperCase();
+        const val = document.createElement("span");
+        val.className = "value"; val.textContent = fmt(p.v);
+        row.append(keyEl, name, val);
+        tooltip.appendChild(row);
+      });
+      tooltip.style.opacity = 1;
+      let left = x + 14, top = 6;
+      if (left + 140 > rect.width) left = x - 154;
+      tooltip.style.left = left + "px";
+      tooltip.style.top = top + "px";
+    });
+    box.addEventListener("mouseleave", hide);
+    function hide() { crosshair.style.opacity = 0; tooltip.style.opacity = 0; }
+
+    const chart = { draw };
+    return chart;
+  }
+
+  function fmtG(v) { return v.toFixed(2); }
+  function fmtDps(v) { return v.toFixed(1); }
+  function fmtUt(v) { return v.toFixed(1); }
+
+  const chartAccel = setupChart("panel-accel", "accel", fmtG);
+  const chartGyro = setupChart("panel-gyro", "gyro", fmtDps);
+  const chartMag = setupChart("panel-mag", "mag", fmtUt);
+
+  // temperature sparkline
+  const sparkCanvas = document.getElementById("tempSpark");
+  const sparkCtx = sparkCanvas.getContext("2d");
+  function drawSpark() {
+    const rect = sparkCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    sparkCanvas.width = Math.max(1, Math.round(rect.width * dpr));
+    sparkCanvas.height = Math.max(1, Math.round(rect.height * dpr));
+    sparkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = rect.width, H = rect.height;
+    sparkCtx.clearRect(0, 0, W, H);
+    if (latestT === null) return;
+    const t0 = latestT - windowSeconds;
+    const pts = tempSeries.filter(p => p.t >= t0);
+    if (pts.length < 2) return;
+    let minV = Infinity, maxV = -Infinity;
+    pts.forEach(p => { if (p.v < minV) minV = p.v; if (p.v > maxV) maxV = p.v; });
+    if (maxV - minV < 0.2) { const mid = (maxV + minV) / 2; minV = mid - 0.1; maxV = mid + 0.1; }
+    const xOf = (t) => ((t - t0) / windowSeconds) * W;
+    const yOf = (v) => H - ((v - minV) / (maxV - minV)) * (H - 4) - 2;
+    sparkCtx.strokeStyle = cssColor("--series-t");
+    sparkCtx.lineWidth = 2; sparkCtx.lineJoin = "round"; sparkCtx.lineCap = "round";
+    sparkCtx.beginPath();
+    pts.forEach((p, i) => { const x = xOf(p.t), y = yOf(p.v); if (i === 0) sparkCtx.moveTo(x, y); else sparkCtx.lineTo(x, y); });
+    sparkCtx.stroke();
+  }
+
+  function loop() {
+    if (!paused) {
+      chartAccel.draw();
+      chartGyro.draw();
+      if (cfg.mag) chartMag.draw();
+      drawSpark();
+      updateLegendValues();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
