@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICM-20948 Position</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:      #f3f3f0;
+    --surface:   #fcfcfbe6;
+    --border:    rgba(11,11,11,0.12);
+    --text:      #101010;
+    --text-2:    #52514e;
+    --muted:     #8a8880;
+    --grid:      #d9d8d0;
+    --baseline:  #b7b6aa;
+    --good:      #0ca30c;
+    --bad:       #d03b3b;
+    --warn:      #b5820a;
+    --accent:    #eb6834;
+    --axis-x:    #e5484d;
+    --axis-y:    #30a46c;
+    --axis-z:    #3b82f6;
+    --magnet:    #6b7280;
+    --imu:       #d98324;
+    --box-edge:  rgba(10,12,18,0.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page:     #0c0c0d;
+      --surface:  #17171ae6;
+      --border:   rgba(255,255,255,0.12);
+      --text:     #f4f4f2;
+      --text-2:   #c3c2b7;
+      --muted:    #7f7e78;
+      --grid:     #262628;
+      --baseline: #3a3a3d;
+      --magnet:   #9aa1ad;
+      --box-edge: rgba(255,255,255,0.45);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--page); color: var(--text);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ---- top bar ---- */
+  #top {
+    flex: 0 0 auto; z-index: 6;
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px;
+    padding: 9px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  #top h1 { margin: 0; font-size: 14px; white-space: nowrap; }
+  #top .meta { color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums;
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+            font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.ok .dot { background: var(--good); } .status.ok { color: var(--good); }
+  .status.bad .dot { background: var(--bad); } .status.bad { color: var(--bad); }
+
+  /* ---- stage: canvas fills it, info cards float over it only ---- */
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; }
+  #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #scene:active { cursor: grabbing; }
+
+  .card {
+    position: absolute; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(8px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.10);
+  }
+  #readout { top: 12px; right: 12px; text-align: right; min-width: 190px; max-width: 44vw; }
+  #readout .cap { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  #readout .range { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 24px; margin: 2px 0 6px; }
+  #readout .rows { display: grid; grid-template-columns: auto auto; gap: 2px 14px; justify-content: end; }
+  #readout .k { color: var(--text-2); text-align: left; }
+  #readout .v { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; min-width: 5.4em; }
+  #readout .dhead { margin-top: 8px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  #readout .d .v { color: var(--accent); }
+
+  #signal { left: 12px; bottom: 12px; width: min(210px, 46vw); }
+  #signal .cap { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  #signal .bwrap { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 22%, transparent); overflow: hidden; margin: 6px 0 4px; }
+  #signal .bar { height: 100%; width: 0%; background: var(--good); transition: width .12s linear, background .2s; }
+  #signal .num { font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--text-2); }
+  #signal .num b { color: var(--text); }
+
+  #banner {
+    top: 12px; left: 50%; transform: translateX(-50%); display: none;
+    padding: 8px 14px; font-size: 12px; border-radius: 999px; max-width: min(60vw, 520px); text-align: center;
+    border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+    color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  }
+  #banner.show { display: block; }
+  #banner.err { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+
+  #calPanel { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, 92vw); display: none; }
+  #calPanel.show { display: block; }
+  #calPanel h2 { margin: 0 0 6px; font-size: 13px; }
+  #calPanel p { margin: 0 0 8px; color: var(--text-2); font-size: 12px; }
+  #calPanel .live { font-variant-numeric: tabular-nums; font-size: 12px; margin: 6px 0; color: var(--text-2); }
+  #calPanel .live b { color: var(--text); }
+  #calPanel .btnrow { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  #calResult { font-size: 11.5px; color: var(--text-2); margin-top: 8px; white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; }
+  .hint { position: absolute; right: 12px; bottom: 12px; color: var(--muted); font-size: 11px; pointer-events: none; }
+
+  /* ---- bottom control bar ---- */
+  #controls {
+    flex: 0 0 auto; z-index: 6;
+    display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center;
+    padding: 8px 10px; background: var(--surface); border-top: 1px solid var(--border);
+  }
+  button {
+    font: inherit; font-size: 12px; padding: 7px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  #calDist { width: 4em; font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: right; }
+  #controls .grp { display: inline-flex; gap: 5px; align-items: center; padding: 3px 8px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-2); font-size: 11.5px; white-space: nowrap; }
+  #controls .sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>ICM-20948 Position</h1>
+  <div class="meta" id="metaLine">connecting&hellip;</div>
+  <div class="status" id="status"><span class="dot"></span><span id="statusText">connecting</span></div>
+</div>
+
+<div id="stage">
+<canvas id="scene"></canvas>
+
+<div id="banner" class="card"></div>
+
+<div id="readout" class="card">
+  <div class="cap">range from magnet</div>
+  <div class="range" id="vRange">&mdash;</div>
+  <div class="rows">
+    <span class="k">along axis</span><span class="v" id="vZ">&mdash;</span>
+    <span class="k">lateral</span><span class="v" id="vL">&mdash;</span>
+    <span class="k">x / y</span><span class="v" id="vXY">&mdash;</span>
+  </div>
+  <div class="dhead">move from start</div>
+  <div class="rows d">
+    <span class="k">&Delta;x</span><span class="v" id="dX">&mdash;</span>
+    <span class="k">&Delta;y</span><span class="v" id="dY">&mdash;</span>
+    <span class="k">&Delta;z</span><span class="v" id="dZ">&mdash;</span>
+  </div>
+</div>
+
+<div id="signal" class="card">
+  <div class="cap">electromagnet signal</div>
+  <div class="bwrap"><div class="bar" id="sigBar"></div></div>
+  <div class="num"><b id="sigNum">&mdash;</b> µT &nbsp;·&nbsp; <span id="sigLabel">&mdash;</span></div>
+</div>
+
+<div id="calPanel" class="card">
+  <h2>Magnetometer calibration (hard / soft iron)</h2>
+  <p>Do this <b>once</b>, <em>away</em> from the electromagnet. Click <b>Start</b>, then slowly
+     turn the board through every orientation &mdash; like tracing the surface of a globe &mdash;
+     for ~20&ndash;30&nbsp;s. Then click <b>Finish</b>.</p>
+  <div class="live" id="calLive">not started</div>
+  <div class="btnrow">
+    <button id="btnCalStart" class="primary">Start</button>
+    <button id="btnCalFinish" disabled>Finish</button>
+    <button id="btnCalCancel" disabled>Cancel</button>
+    <button id="btnCalClose">Close</button>
+  </div>
+  <div id="calResult"></div>
+</div>
+
+<div class="hint">drag to orbit &middot; wheel to zoom</div>
+</div><!-- #stage -->
+
+<div id="controls">
+  <span class="grp">setup
+    <button id="btnNull">Null gyro</button>
+    <button id="btnCal">Calibrate magnetometer&hellip;</button>
+    <button id="btnZero" class="primary">Zero field</button>
+    <input id="calDist" type="number" min="6" max="40" step="1" value="12" title="on-axis distance, cm">
+    <button id="btnCoil">Calibrate magnet</button>
+  </span>
+  <span class="sep"></span>
+  <button id="btnStart" class="primary">Set start</button>
+  <button id="btnClear" disabled>Clear start</button>
+  <button id="btnFlip">Flip side</button>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  let sample = null;
+  let stat = {};
+  let meta = { rate: 30 };
+  const CM_PER_UNIT = 4.0;      // scene units -> cm
+  const VIEW_CLAMP = 9.0;       // clamp the drawn IMU to this many units
+
+  const $ = (id) => document.getElementById(id);
+  const cssColor = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ---------- camera / projection (shared with the orientation view) ----------
+  const scene = $("scene");
+  const ctx = scene.getContext("2d");
+  const PPU = 46, CAM_DIST = 9.0;
+  let az = -0.7, el = 0.5, zoom = 1.0;
+  let W = 0, H = 0, cx = 0, cy = 0;
+
+  function toView(p) {
+    const ca = Math.cos(az), sa = Math.sin(az);
+    const x = p[0]*ca - p[1]*sa;
+    const y = p[0]*sa + p[1]*ca;
+    const z = p[2];
+    const ce = Math.cos(el), se = Math.sin(el);
+    return [x, y*ce - z*se, y*se + z*ce];
+  }
+  function project(p) {
+    const v = toView(p);
+    const depth = CAM_DIST + v[2];
+    const s = (PPU * zoom * CAM_DIST) / Math.max(0.1, depth);
+    return { x: cx + v[0]*s, y: cy - v[1]*s, depth };
+  }
+  function resize() {
+    const r = scene.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    W = r.width; H = r.height;
+    const pw = Math.round(W*dpr), ph = Math.round(H*dpr);
+    if (scene.width !== pw || scene.height !== ph) { scene.width = pw; scene.height = ph; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ---------- primitives ----------
+  function line3(a, b, style, width, dash) {
+    const pa = project(a), pb = project(b);
+    ctx.strokeStyle = style; ctx.lineWidth = width || 1;
+    ctx.setLineDash(dash || []);
+    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  function dot3(p, rad, style) {
+    const q = project(p);
+    ctx.fillStyle = style;
+    ctx.beginPath(); ctx.arc(q.x, q.y, rad, 0, 7); ctx.fill();
+    return q;
+  }
+  function arrow3(orig, dir, len, color, label) {
+    const tip = [orig[0]+dir[0]*len, orig[1]+dir[1]*len, orig[2]+dir[2]*len];
+    const a = project(orig), b = project(tip);
+    ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, 7); ctx.fill();
+    if (label) {
+      const l = project([orig[0]+dir[0]*(len+0.5), orig[1]+dir[1]*(len+0.5), orig[2]+dir[2]*(len+0.5)]);
+      ctx.fillStyle = color; ctx.font = "600 11px system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(label, l.x, l.y);
+    }
+  }
+
+  function drawGrid() {
+    const N = 6;
+    for (let i = -N; i <= N; i++) {
+      const s = (i === 0) ? cssColor("--baseline") : cssColor("--grid");
+      line3([i, -N, 0], [i, N, 0], s, i === 0 ? 1.4 : 1);
+      line3([-N, i, 0], [N, i, 0], s, i === 0 ? 1.4 : 1);
+    }
+    // ring markers every CM_PER_UNIT*2 cm
+    ctx.strokeStyle = cssColor("--grid"); ctx.lineWidth = 1;
+    for (let rr = 2; rr <= N; rr += 2) {
+      ctx.beginPath();
+      for (let k = 0; k <= 64; k++) {
+        const t = k/64*Math.PI*2;
+        const q = project([rr*Math.cos(t), rr*Math.sin(t), 0]);
+        k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  function ellipse3(cz, rad, style, width) {
+    ctx.strokeStyle = style; ctx.lineWidth = width || 1.4; ctx.setLineDash([]);
+    ctx.beginPath();
+    for (let k = 0; k <= 48; k++) {
+      const t = k/48*Math.PI*2;
+      const q = project([rad*Math.cos(t), rad*Math.sin(t), cz]);
+      k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+    }
+    ctx.stroke();
+  }
+  function drawMagnet() {
+    const R = 0.5, HZ = 0.5, m = cssColor("--magnet");
+    // faint body fill via a few verticals
+    for (let k = 0; k < 24; k++) {
+      const t = k/24*Math.PI*2;
+      line3([R*Math.cos(t), R*Math.sin(t), -HZ], [R*Math.cos(t), R*Math.sin(t), HZ],
+            cssColor("--grid"), 1);
+    }
+    ellipse3(-HZ, R, m, 1.6);
+    ellipse3( HZ, R, m, 1.6);
+    for (const t of [0, Math.PI/2, Math.PI, 3*Math.PI/2])
+      line3([R*Math.cos(t), R*Math.sin(t), -HZ], [R*Math.cos(t), R*Math.sin(t), HZ], m, 1.4);
+    arrow3([0,0,HZ], [0,0,1], 1.6, cssColor("--axis-z"), "axis (m)");
+    dot3([0,0,0], 3, m);
+  }
+
+  // ---------- trail ----------
+  const trail = [];   // coil-frame cm
+  function pushTrail(pc) {
+    if (!trail.length || Math.hypot(pc[0]-trail[trail.length-1][0], pc[1]-trail[trail.length-1][1], pc[2]-trail[trail.length-1][2]) > 0.25) {
+      trail.push(pc.slice());
+      if (trail.length > 140) trail.shift();
+    }
+  }
+  function toUnits(pc) {
+    let u = [pc[0]/CM_PER_UNIT, pc[1]/CM_PER_UNIT, pc[2]/CM_PER_UNIT];
+    const n = Math.hypot(u[0], u[1], u[2]);
+    if (n > VIEW_CLAMP) u = u.map(v => v*VIEW_CLAMP/n);
+    return u;
+  }
+
+  function render() {
+    resize();
+    ctx.clearRect(0, 0, W, H);
+    cx = W / 2;
+    cy = H / 2 + H * 0.14;
+
+    drawGrid();
+    drawMagnet();
+
+    const pos = sample && sample.pos ? sample.pos : null;
+    const startSet = stat.have_start;
+
+    // trail
+    if (trail.length > 1) {
+      for (let i = 1; i < trail.length; i++) {
+        const a = project(toUnits(trail[i-1])), b = project(toUnits(trail[i]));
+        ctx.globalAlpha = 0.12 + 0.5 * (i / trail.length);
+        ctx.strokeStyle = cssColor("--imu"); ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    if (pos) {
+      const u = toUnits(pos);
+      // drop line + ground shadow
+      line3([u[0], u[1], 0], u, cssColor("--muted"), 1, [4, 4]);
+      ctx.globalAlpha = 0.5; dot3([u[0], u[1], 0], 3, cssColor("--muted")); ctx.globalAlpha = 1;
+      // range vector from magnet
+      line3([0, 0, 0], u, cssColor("--muted"), 1.4);
+      // start marker + delta vector
+      if (startSet && sample.delta) {
+        const s = toUnits([pos[0]-sample.delta[0], pos[1]-sample.delta[1], pos[2]-sample.delta[2]]);
+        const sp = project(s);
+        ctx.strokeStyle = cssColor("--accent"); ctx.lineWidth = 1.5; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(sp.x, sp.y, 7, 0, 7); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sp.x-11, sp.y); ctx.lineTo(sp.x+11, sp.y);
+        ctx.moveTo(sp.x, sp.y-11); ctx.lineTo(sp.x, sp.y+11); ctx.stroke();
+        line3(s, u, cssColor("--accent"), 2);
+      }
+      // the IMU
+      const halo = project(u);
+      ctx.fillStyle = cssColor("--imu"); ctx.globalAlpha = 0.18;
+      ctx.beginPath(); ctx.arc(halo.x, halo.y, 12, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+      dot3(u, 6, cssColor("--imu"));
+      ctx.strokeStyle = cssColor("--box-edge"); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(halo.x, halo.y, 6, 0, 7); ctx.stroke();
+    }
+
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+
+  // ---------- HUD ----------
+  const fmt = (v) => (v >= 0 ? "+" : "") + v.toFixed(1);
+  function updateHUD() {
+    const pos = sample && sample.pos ? sample.pos : null;
+    if (pos) {
+      $("vRange").textContent = (sample.range_cm != null ? sample.range_cm.toFixed(1) : "–") + " cm";
+      $("vZ").textContent = fmt(pos[2]);
+      $("vL").textContent = (sample.lateral_cm != null ? sample.lateral_cm.toFixed(1) : "–");
+      $("vXY").textContent = fmt(pos[0]) + " / " + fmt(pos[1]);
+      pushTrail(pos);
+    } else {
+      $("vRange").textContent = "–"; $("vZ").textContent = $("vL").textContent = $("vXY").textContent = "–";
+    }
+    const d = sample && sample.delta ? sample.delta : null;
+    $("dX").textContent = d ? fmt(d[0]) : "–";
+    $("dY").textContent = d ? fmt(d[1]) : "–";
+    $("dZ").textContent = d ? fmt(d[2]) : "–";
+
+    // signal bar
+    const b = sample && sample.b_mag != null ? sample.b_mag : (stat.b_mag != null ? stat.b_mag : null);
+    const lab = (sample && sample.signal) || "none";
+    $("sigNum").textContent = b != null ? b.toFixed(2) : "–";
+    $("sigLabel").textContent = lab;
+    const pct = b == null ? 0 : Math.max(0, Math.min(100, (b / 12) * 100));
+    $("sigBar").style.width = pct + "%";
+    $("sigBar").style.background =
+      lab === "good" ? cssColor("--good") : lab === "ok" ? cssColor("--axis-z") :
+      lab === "weak" ? cssColor("--warn") : cssColor("--bad");
+
+    // buttons
+    $("btnClear").disabled = !stat.have_start;
+    $("btnCoil").disabled = !stat.have_field_zero || !!stat.zeroing_field;
+    $("btnStart").disabled = !(stat.have_coil_cal && pos);
+    $("btnFlip").disabled = !stat.have_coil_cal;
+
+    // banner
+    const bn = $("banner");
+    let msg = "", err = false;
+    const st = sample ? sample.state : null;
+    if (stat.connected === false) { msg = "Sensor disconnected — " + (stat.error || "retrying…"); err = true; }
+    else if (stat.nulling_gyro) msg = "Nulling gyro bias — hold the board still…";
+    else if (stat.calibrating) msg = "";
+    else if (st === "need-mag-cal" || (stat.mag_present !== false && !stat.have_cal))
+      msg = "Magnetometer not calibrated — open “Calibrate magnetometer”, away from the electromagnet.";
+    else if (st === "zeroing-field" || stat.zeroing_field) msg = "Zeroing ambient field — electromagnet OFF, hold the board still…";
+    else if (st === "need-field-zero") msg = "Switch the electromagnet OFF, hold the board still, then click “Zero field”.";
+    else if (st === "need-coil-cal") msg = "Switch the electromagnet ON, hold the board on its axis at " + ($("calDist").value || "12") + " cm, then “Calibrate magnet”.";
+    else if (st === "ready" && sample && sample.signal === "none") { msg = "No electromagnet signal — is it powered? Bring the board within ~20 cm."; err = true; }
+    else if (st === "ready" && sample && sample.near_field) msg = "Very close to the magnet — the dipole model is unreliable inside ~8 cm.";
+    else if (st === "ready" && sample && sample.signal === "weak") msg = "Weak signal — move closer to the electromagnet for a steadier fix.";
+    bn.className = "card" + (msg ? " show" : "") + (err ? " err" : "");
+    bn.textContent = msg;
+
+    // calibration live line
+    if (stat.calibrating) {
+      const sp = stat.cal_span || [0, 0, 0];
+      $("calLive").innerHTML = `collecting&hellip; <b>${stat.cal_samples}</b> samples &nbsp; span x/y/z = ` +
+        `<b>${sp[0]}</b> / <b>${sp[1]}</b> / <b>${sp[2]}</b> µT`;
+      $("btnCalStart").disabled = true; $("btnCalFinish").disabled = false; $("btnCalCancel").disabled = false;
+    } else {
+      $("btnCalStart").disabled = (stat.mag_present === false);
+      $("btnCalFinish").disabled = true; $("btnCalCancel").disabled = true;
+    }
+  }
+
+  function setStatus(ok, error) {
+    const el = $("status");
+    el.className = "status " + (ok ? "ok" : "bad");
+    $("statusText").textContent = ok ? "Connected" : ("Disconnected" + (error ? " — " + error : ""));
+  }
+
+  function metaLine() {
+    let s = `bus ${meta.bus} · 0x${(meta.address||0).toString(16).toUpperCase()} · ~${meta.rate} Hz · β=${meta.beta} · side ${stat.side ?? "?"}`;
+    if (stat.have_coil_cal) s += ` · k=${stat.coil_k} µT·cm³ @ ${stat.coil_distance_cm} cm`;
+    $("metaLine").textContent = s;
+  }
+
+  // ---------- stream ----------
+  fetch("/meta").then((r) => r.json()).then((m) => { meta = m; metaLine(); }).catch(() => {});
+
+  function connect() {
+    const es = new EventSource("/stream");
+    es.onmessage = (ev) => { sample = JSON.parse(ev.data); };
+    es.addEventListener("status", (ev) => {
+      stat = JSON.parse(ev.data);
+      setStatus(stat.connected, stat.error);
+      metaLine(); updateHUD();
+    });
+    es.onerror = () => setStatus(false, "stream interrupted, reconnecting…");
+  }
+  connect();
+  setInterval(updateHUD, 120);
+
+  // ---------- controls ----------
+  const post = async (path, body) => {
+    try {
+      const r = await fetch(path, { method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined });
+      return await r.json();
+    } catch (e) { return { ok: false, error: String(e) }; }
+  };
+  const applyStat = (s) => { if (s && typeof s === "object") { stat = { ...stat, ...s }; metaLine(); updateHUD(); } };
+  const flash = (r) => { if (r && r.ok === false && r.error) { const bn = $("banner"); bn.className = "card show err"; bn.textContent = r.error; } };
+
+  $("btnNull").addEventListener("click", async () => applyStat(await post("/null-gyro")));
+  $("btnZero").addEventListener("click", async () => { trail.length = 0; applyStat(await post("/field-zero/start")); });
+  $("btnCoil").addEventListener("click", async () => {
+    trail.length = 0;
+    const r = await post("/coil/calibrate", { distance_cm: parseFloat($("calDist").value) });
+    applyStat(r); flash(r);
+  });
+  $("btnStart").addEventListener("click", async () => { const r = await post("/start/set"); applyStat(r); flash(r); });
+  $("btnClear").addEventListener("click", async () => applyStat(await post("/start/clear")));
+  $("btnFlip").addEventListener("click", async () => { trail.length = 0; applyStat(await post("/side/flip")); });
+
+  // persist the calibration distance
+  try {
+    const saved = localStorage.getItem("magpos.calDist");
+    if (saved) $("calDist").value = saved;
+  } catch (e) {}
+  $("calDist").addEventListener("change", () => {
+    try { localStorage.setItem("magpos.calDist", $("calDist").value); } catch (e) {}
+  });
+
+  // magnetometer hard/soft-iron calibration panel
+  $("btnCal").addEventListener("click", () => $("calPanel").classList.toggle("show"));
+  $("btnCalClose").addEventListener("click", () => $("calPanel").classList.remove("show"));
+  $("btnCalStart").addEventListener("click", async () => { $("calResult").textContent = ""; applyStat(await post("/calibrate/start")); });
+  $("btnCalCancel").addEventListener("click", async () => applyStat(await post("/calibrate/cancel")));
+  $("btnCalFinish").addEventListener("click", async () => {
+    const r = await post("/calibrate/finish");
+    applyStat(r);
+    if (r.ok && r.cal) {
+      $("calResult").textContent =
+        "saved imu_mag_cal.json\noffset (µT): " + r.cal.offset.map((v) => v.toFixed(1)).join(", ") +
+        "\nscale:        " + r.cal.scale.map((v) => v.toFixed(3)).join(", ");
+    } else {
+      $("calResult").textContent = "⚠ " + (r.error || "calibration failed");
+    }
+  });
+
+  // ---------- orbit / zoom ----------
+  let drag = null;
+  scene.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; scene.setPointerCapture(e.pointerId); });
+  scene.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    az -= (e.clientX - drag.x) * 0.01;
+    el += (e.clientY - drag.y) * 0.01;
+    el = Math.max(-Math.PI, Math.min(Math.PI, el));
+    drag = { x: e.clientX, y: e.clientY };
+  });
+  const endDrag = () => { drag = null; };
+  scene.addEventListener("pointerup", endDrag);
+  scene.addEventListener("pointercancel", endDrag);
+  scene.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    zoom *= e.deltaY < 0 ? 1.1 : 0.9;
+    zoom = Math.max(0.35, Math.min(4, zoom));
+  }, { passive: false });
+})();
+</script>
+</body>
+</html>

@@ -14,9 +14,13 @@ A small Python tool to detect and read a **TDK/InvenSense ICM-20948**
 | `icm20948_cli.py` | The full `buses` / `scan` / `whoami` / `read` command-line tool; pure argument parsing and dispatch. |
 | `icm20948.py` | Backwards-compatible facade: re-exports the names above and forwards `./icm20948.py …` to the CLI. |
 | `ak09916_selftest.py` | Standalone AK09916 magnetometer self-test: energises the mag die's internal coil and checks the reading against datasheet bounds. |
-| `imu_web.py` + `imu_dashboard.html` | Optional live browser dashboard built on the driver. |
+| `imu_ahrs.py` | Orientation fusion: a dependency-free Madgwick AHRS filter, a magnetometer hard/soft-iron calibrator, and a gyro-bias nuller. No I/O. |
+| `imu_web.py` + `imu_dashboard.html` | Optional live browser dashboard built on the driver (raw strip charts at `/`). |
+| `imu_orientation.html` | The `/orientation` page served by `imu_web.py`: a 3-D view of the board's attitude vs a reference pose. |
 
 Dependency direction: `registers` <- `driver` / `i2c` <- `main` <- `cli`.
+`imu_ahrs.py` is standalone (stdlib only); `imu_web.py` pulls in both `driver`
+and `imu_ahrs`.
 
 ## One-time setup (Raspberry Pi 5)
 
@@ -51,6 +55,41 @@ If you would like to run the full tool along with the web interface, you can run
 ./imu_web.py -b 1 --mag -r 40
 ./imu_web.py -b 1 --port 8080 -a 0x69
 ```
+
+### 3-D orientation view (`/orientation`)
+
+`http://<pi-ip>:8000/orientation` shows the board's full attitude in 3-D
+against a fixed reference pose, instead of raw traces.
+
+Why a separate view: the accelerometer only senses gravity, so on its own it
+gives roll and pitch but is **blind to rotation about the vertical axis**
+(yaw / heading) -- which is why the strip charts don't react to spinning the
+board flat on the bench. The gyro senses yaw *rate*; integrating it drifts.
+Only the magnetometer gives an absolute heading. `imu_web.py` runs a Madgwick
+AHRS filter that fuses all three into one orientation.
+
+```bash
+./imu_web.py -b 1 --mag -r 40     # --mag is required for a locked heading
+```
+
+First-time setup, from the page:
+
+1. **Null gyro** -- leave the board still for a second (also done automatically
+   at startup).
+2. **Calibrate magnetometer** -> Start, then slowly turn the board through
+   every orientation for ~20-30 s (away from motors / speakers / steel),
+   then Finish. This writes `imu_mag_cal.json` next to the script and is
+   reused on later runs.
+3. Put the board in the pose you want to measure from and click
+   **Set reference**. Yaw / pitch / roll and the compass dial now read
+   relative to that pose.
+
+Without `--mag` or before calibration the filter runs in 6-DOF mode: roll and
+pitch are absolute and steady, but yaw is only relative to "Set reference" and
+drifts slowly over minutes. The page shows a banner while in that mode.
+
+`--beta` (default 0.1) trades responsiveness against noise: raise it for
+snappier tracking, lower it for a steadier hold.
 
 Full command-line tool (`icm20948_cli.py`, or the `icm20948.py` facade):
 
