@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICM-20948 Orientation</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:        #f3f3f0;
+    --surface:     #fcfcfbe6;
+    --border:      rgba(11,11,11,0.12);
+    --text:        #101010;
+    --text-2:      #52514e;
+    --muted:       #8a8880;
+    --grid:        #d9d8d0;
+    --baseline:    #b7b6aa;
+    --good:        #0ca30c;
+    --bad:         #d03b3b;
+    --warn:        #b5820a;
+    --accent:      #eb6834;
+    --axis-x:      #e5484d;
+    --axis-y:      #30a46c;
+    --axis-z:      #3b82f6;
+    --box-edge:    rgba(10,12,18,0.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page:      #0c0c0d;
+      --surface:   #17171ae6;
+      --border:    rgba(255,255,255,0.12);
+      --text:      #f4f4f2;
+      --text-2:    #c3c2b7;
+      --muted:     #7f7e78;
+      --grid:      #262628;
+      --baseline:  #3a3a3d;
+      --box-edge:  rgba(255,255,255,0.45);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--page); color: var(--text);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #scene:active { cursor: grabbing; }
+
+  .card {
+    position: fixed; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; backdrop-filter: blur(8px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.10);
+  }
+  #hdr { top: 14px; left: 14px; max-width: 46vw; }
+  #hdr h1 { margin: 0 0 3px; font-size: 15px; }
+  #hdr .meta { color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .status { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11.5px; color: var(--text-2); }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.ok .dot { background: var(--good); } .status.ok { color: var(--good); }
+  .status.bad .dot { background: var(--bad); } .status.bad { color: var(--bad); }
+
+  #readout { top: 14px; right: 14px; text-align: right; min-width: 180px; }
+  #readout .fix { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  #readout .fix b { color: var(--text-2); }
+  #readout .rows { margin-top: 6px; display: grid; grid-template-columns: auto auto; gap: 2px 14px; justify-content: end; }
+  #readout .k { color: var(--text-2); text-align: left; }
+  #readout .v { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 15px; min-width: 5.2em; }
+  #readout .heading { margin-top: 8px; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+  #compassWrap { bottom: 14px; left: 14px; padding: 10px; text-align: center; }
+  #compass { display: block; width: 150px; height: 150px; }
+  #compassWrap .cap { font-size: 10.5px; color: var(--muted); margin-top: 4px; letter-spacing: .04em; }
+
+  #controls { bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: inherit; font-size: 12px; padding: 7px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+
+  #banner {
+    top: 14px; left: 50%; transform: translateX(-50%); display: none;
+    padding: 8px 14px; font-size: 12px; border-radius: 999px;
+    border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+    color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  }
+  #banner.show { display: block; }
+  #banner.err { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+
+  #calPanel { bottom: 62px; left: 50%; transform: translateX(-50%); width: min(420px, 92vw); display: none; }
+  #calPanel.show { display: block; }
+  #calPanel h2 { margin: 0 0 6px; font-size: 13px; }
+  #calPanel p { margin: 0 0 8px; color: var(--text-2); font-size: 12px; }
+  #calPanel .live { font-variant-numeric: tabular-nums; font-size: 12px; margin: 6px 0; color: var(--text-2); }
+  #calPanel .live b { color: var(--text); }
+  #calPanel .btnrow { display: flex; gap: 8px; margin-top: 6px; }
+  #calResult { font-size: 11.5px; color: var(--text-2); margin-top: 8px; white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; }
+  .hint { position: fixed; bottom: 14px; right: 14px; color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="banner" class="card"></div>
+
+<div id="hdr" class="card">
+  <h1>ICM-20948 Orientation</h1>
+  <div class="meta" id="metaLine">connecting&hellip;</div>
+  <div class="status" id="status"><span class="dot"></span><span id="statusText">connecting</span></div>
+</div>
+
+<div id="readout" class="card">
+  <div class="fix">fusion <b id="fixMode">&mdash;</b></div>
+  <div class="rows">
+    <span class="k">yaw&nbsp;(Z)</span><span class="v" id="vYaw">&mdash;</span>
+    <span class="k">pitch&nbsp;(Y)</span><span class="v" id="vPitch">&mdash;</span>
+    <span class="k">roll&nbsp;(X)</span><span class="v" id="vRoll">&mdash;</span>
+  </div>
+  <div class="heading">magnetic heading <b id="vHeading">&mdash;</b></div>
+</div>
+
+<div id="compassWrap" class="card">
+  <canvas id="compass" width="150" height="150"></canvas>
+  <div class="cap">YAW vs REFERENCE</div>
+</div>
+
+<div id="controls">
+  <button id="btnZero" class="primary">Set reference</button>
+  <button id="btnClear" disabled>Clear reference</button>
+  <button id="btnNull">Null gyro</button>
+  <button id="btnCal">Calibrate magnetometer&hellip;</button>
+</div>
+
+<div id="calPanel" class="card">
+  <h2>Magnetometer calibration (hard / soft iron)</h2>
+  <p>Click <b>Start</b>, then slowly turn the board through <em>every</em> orientation &mdash;
+     tip it onto each face and rotate, like tracing the surface of a globe &mdash; for ~20&ndash;30&nbsp;s.
+     Then click <b>Finish</b>. Do this away from motors, speakers and big steel.</p>
+  <div class="live" id="calLive">not started</div>
+  <div class="btnrow">
+    <button id="btnCalStart" class="primary">Start</button>
+    <button id="btnCalFinish" disabled>Finish</button>
+    <button id="btnCalCancel" disabled>Cancel</button>
+    <button id="btnCalClose">Close</button>
+  </div>
+  <div id="calResult"></div>
+</div>
+
+<div class="hint">drag to orbit &middot; wheel to zoom</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- shared state ----------
+  let sample = null;          // latest fused sample
+  let stat = {};              // latest /fusion + connection status
+  let meta = { rate: 30, mag: false };
+
+  const $ = (id) => document.getElementById(id);
+  const cssColor = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ---------- vector / quaternion helpers ----------
+  const norm3 = (v) => { const n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0]/n, v[1]/n, v[2]/n]; };
+  function qRot(q, v) {                       // rotate vector v by quaternion q=(w,x,y,z)
+    const w = q[0], x = q[1], y = q[2], z = q[3];
+    const vx = v[0], vy = v[1], vz = v[2];
+    const tx = 2 * (y*vz - z*vy);
+    const ty = 2 * (z*vx - x*vz);
+    const tz = 2 * (x*vy - y*vx);
+    return [vx + w*tx + (y*tz - z*ty),
+            vy + w*ty + (z*tx - x*tz),
+            vz + w*tz + (x*ty - y*tx)];
+  }
+
+  // ---------- camera / projection ----------
+  const scene = $("scene");
+  const ctx = scene.getContext("2d");
+  const PPU = 46, CAM_DIST = 9.0;
+  let az = -0.7, el = 0.42, zoom = 1.0;
+  let W = 0, H = 0, cx = 0, cy = 0;
+
+  function toView(p) {
+    const ca = Math.cos(az), sa = Math.sin(az);
+    const x = p[0]*ca - p[1]*sa;
+    const y = p[0]*sa + p[1]*ca;
+    const z = p[2];
+    const ce = Math.cos(el), se = Math.sin(el);
+    return [x, y*ce - z*se, y*se + z*ce];      // [right, up, depth]
+  }
+  function project(p) {
+    const v = toView(p);
+    const depth = CAM_DIST + v[2];
+    const s = (PPU * zoom * CAM_DIST) / Math.max(0.1, depth);
+    return { x: cx + v[0]*s, y: cy - v[1]*s, depth };
+  }
+
+  function resize() {
+    const r = scene.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    W = r.width; H = r.height;
+    const pw = Math.round(W*dpr), ph = Math.round(H*dpr);
+    if (scene.width !== pw || scene.height !== ph) { scene.width = pw; scene.height = ph; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ---------- primitives ----------
+  function line3(a, b, style, width) {
+    const pa = project(a), pb = project(b);
+    ctx.strokeStyle = style; ctx.lineWidth = width || 1;
+    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+  }
+  function arrow3(orig, dir, len, color, label, o) {
+    o = o || {};
+    const tip = [orig[0]+dir[0]*len, orig[1]+dir[1]*len, orig[2]+dir[2]*len];
+    const a = project(orig), b = project(tip);
+    ctx.globalAlpha = o.alpha ?? 1;
+    ctx.strokeStyle = color; ctx.lineWidth = o.width ?? 2.5;
+    ctx.setLineDash(o.dash ? [5, 4] : []);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([]);
+    if (!o.dash) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, 7); ctx.fill(); }
+    if (label) {
+      const l = project([orig[0]+dir[0]*(len+0.55), orig[1]+dir[1]*(len+0.55), orig[2]+dir[2]*(len+0.55)]);
+      ctx.fillStyle = color;
+      ctx.font = (o.dash ? "11px " : "600 12px ") + "system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(label, l.x, l.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawGrid() {
+    const N = 5;
+    for (let i = -N; i <= N; i++) {
+      const s = (i === 0) ? cssColor("--baseline") : cssColor("--grid");
+      line3([i, -N, 0], [i, N, 0], s, i === 0 ? 1.4 : 1);
+      line3([-N, i, 0], [N, i, 0], s, i === 0 ? 1.4 : 1);
+    }
+  }
+
+  function drawReference() {
+    // yaw-reference ring on the ground plane
+    const R = 3.0, seg = 72;
+    ctx.globalAlpha = 0.55; ctx.strokeStyle = cssColor("--muted"); ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i <= seg; i++) {
+      const t = i / seg * Math.PI * 2;
+      const p = project([R*Math.cos(t), R*Math.sin(t), 0]);
+      i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+    ctx.stroke();
+    const a = project([R, 0, 0]), b = project([R + 0.5, 0, 0]);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = cssColor("--muted");
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const l = project([R + 1.05, 0, 0]);
+    ctx.fillText("ref 0°", l.x, l.y);
+    // dashed "up" reference
+    arrow3([0, 0, 0], [0, 0, 1], 3.2, cssColor("--muted"), "up", { dash: true, alpha: 0.45, width: 1.4 });
+  }
+
+  const HE = [1.7, 1.15, 0.28];
+  const BV = [];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) BV.push([sx*HE[0], sy*HE[1], sz*HE[2]]);
+  const bi = (sx, sy, sz) => (sx > 0 ? 4 : 0) + (sy > 0 ? 2 : 0) + (sz > 0 ? 1 : 0);
+  const FACES = [
+    { n: [0, 0, 1],  v: [bi(-1,-1,1), bi(1,-1,1), bi(1,1,1), bi(-1,1,1)],   base: [132, 152, 180] },
+    { n: [0, 0, -1], v: [bi(-1,-1,-1), bi(-1,1,-1), bi(1,1,-1), bi(1,-1,-1)], base: [88, 100, 120] },
+    { n: [1, 0, 0],  v: [bi(1,-1,-1), bi(1,1,-1), bi(1,1,1), bi(1,-1,1)],   base: [112, 126, 148] },
+    { n: [-1, 0, 0], v: [bi(-1,-1,-1), bi(-1,-1,1), bi(-1,1,1), bi(-1,1,-1)], base: [112, 126, 148] },
+    { n: [0, 1, 0],  v: [bi(-1,1,-1), bi(-1,1,1), bi(1,1,1), bi(1,1,-1)],   base: [100, 113, 134] },
+    { n: [0, -1, 0], v: [bi(-1,-1,-1), bi(1,-1,-1), bi(1,-1,1), bi(-1,-1,1)], base: [100, 113, 134] },
+  ];
+  const LIGHT = norm3([0.35, -0.5, 0.8]);
+
+  function drawBox(q) {
+    const P = BV.map((v) => project(qRot(q, v)));
+    FACES.forEach((f) => { f._d = (P[f.v[0]].depth + P[f.v[1]].depth + P[f.v[2]].depth + P[f.v[3]].depth) / 4; });
+    const order = FACES.slice().sort((a, b) => b._d - a._d);
+    const edge = cssColor("--box-edge");
+    order.forEach((f) => {
+      const nr = norm3(qRot(q, f.n));
+      const lb = 0.42 + 0.58 * Math.max(0, nr[0]*LIGHT[0] + nr[1]*LIGHT[1] + nr[2]*LIGHT[2]);
+      ctx.beginPath();
+      f.v.forEach((i, k) => { const p = P[i]; k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+      ctx.closePath();
+      ctx.fillStyle = `rgb(${Math.round(f.base[0]*lb)},${Math.round(f.base[1]*lb)},${Math.round(f.base[2]*lb)})`;
+      ctx.fill();
+      ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.stroke();
+    });
+    // "nose" wedge on the +X face, drawn only when that face points at us
+    if (toView(qRot(q, [1, 0, 0]))[2] < 0) {
+      const nose = [[HE[0]+0.02, 0, 0.17], [HE[0]+0.02, -0.26, -0.17], [HE[0]+0.02, 0.26, -0.17]]
+        .map((p) => project(qRot(q, p)));
+      ctx.beginPath();
+      nose.forEach((p, k) => { k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+      ctx.closePath();
+      ctx.fillStyle = cssColor("--accent"); ctx.fill();
+    }
+  }
+
+  function render() {
+    resize();
+    ctx.clearRect(0, 0, W, H);
+    cx = W / 2;
+    cy = H / 2 + H * 0.12;
+
+    drawGrid();
+    drawReference();
+
+    const q = (sample && sample.quat) ? sample.quat : [1, 0, 0, 0];
+    drawBox(q);
+    // body-axis triad
+    arrow3([0, 0, 0], qRot(q, [1, 0, 0]), 2.7, cssColor("--axis-x"), "X");
+    arrow3([0, 0, 0], qRot(q, [0, 1, 0]), 2.7, cssColor("--axis-y"), "Y");
+    arrow3([0, 0, 0], qRot(q, [0, 0, 1]), 2.7, cssColor("--axis-z"), "Z");
+
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+
+  // ---------- compass (top-down yaw vs reference) ----------
+  const cc = $("compass").getContext("2d");
+  function drawCompass() {
+    const dpr = window.devicePixelRatio || 1;
+    const S = 150;
+    if ($("compass").width !== S*dpr) { $("compass").width = S*dpr; $("compass").height = S*dpr; }
+    cc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cc.clearRect(0, 0, S, S);
+    const c = S / 2, R = c - 12;
+    cc.strokeStyle = cssColor("--border"); cc.lineWidth = 1.5;
+    cc.beginPath(); cc.arc(c, c, R, 0, Math.PI * 2); cc.stroke();
+    cc.fillStyle = cssColor("--muted"); cc.font = "10px system-ui"; cc.textAlign = "center"; cc.textBaseline = "middle";
+    [["0", 0], ["90", 90], ["180", 180], ["270", 270]].forEach(([t, d]) => {
+      const a = d * Math.PI / 180;
+      const x = c + Math.sin(a) * (R - 9), y = c - Math.cos(a) * (R - 9);
+      cc.fillText(t, x, y);
+    });
+    // reference tick at 0 (top)
+    cc.strokeStyle = cssColor("--muted"); cc.lineWidth = 2;
+    cc.beginPath(); cc.moveTo(c, c - R); cc.lineTo(c, c - R + 8); cc.stroke();
+
+    const yaw = (sample && sample.euler) ? sample.euler[0] : 0;
+    const a = yaw * Math.PI / 180;
+    const tip = [c + Math.sin(a) * (R - 6), c - Math.cos(a) * (R - 6)];
+    const tail = [c - Math.sin(a) * 14, c + Math.cos(a) * 14];
+    const left = [c + Math.sin(a - 2.4) * 9, c - Math.cos(a - 2.4) * 9];
+    const right = [c + Math.sin(a + 2.4) * 9, c - Math.cos(a + 2.4) * 9];
+    cc.beginPath();
+    cc.moveTo(tip[0], tip[1]); cc.lineTo(left[0], left[1]);
+    cc.lineTo(tail[0], tail[1]); cc.lineTo(right[0], right[1]);
+    cc.closePath();
+    cc.fillStyle = cssColor("--accent"); cc.fill();
+    cc.fillStyle = cssColor("--text"); cc.font = "600 15px system-ui";
+    cc.fillText(yaw.toFixed(0) + "°", c, c + 1);
+    requestAnimationFrame(drawCompass);
+  }
+  requestAnimationFrame(drawCompass);
+
+  // ---------- HUD ----------
+  function updateHUD() {
+    if (sample && sample.euler) {
+      $("vYaw").textContent = sample.euler[0].toFixed(1) + "°";
+      $("vPitch").textContent = sample.euler[1].toFixed(1) + "°";
+      $("vRoll").textContent = sample.euler[2].toFixed(1) + "°";
+      $("fixMode").textContent = (sample.fix || "").toUpperCase();
+      $("vHeading").textContent = (sample.fix === "9dof" && sample.heading != null)
+        ? sample.heading.toFixed(0) + "°" : "n/a (6-DOF)";
+    }
+    $("btnClear").disabled = !stat.have_ref;
+
+    // banner
+    const b = $("banner");
+    let msg = "", err = false;
+    if (stat.connected === false) { msg = "Sensor disconnected — " + (stat.error || "retrying…"); err = true; }
+    else if (stat.nulling_gyro) msg = "Nulling gyro bias — hold the board still…";
+    else if (stat.calibrating) msg = "";   // the calibration panel shows progress
+    else if (stat.mag_present === false) msg = "Started without --mag — 6-DOF only, heading will drift over minutes.";
+    else if (!stat.have_cal) msg = "Magnetometer not calibrated — 6-DOF only. Click “Calibrate magnetometer” for a locked heading.";
+    b.className = "card" + (msg ? " show" : "") + (err ? " err" : "");
+    b.textContent = msg;
+
+    // calibration live line
+    if (stat.calibrating) {
+      const sp = stat.cal_span || [0, 0, 0];
+      $("calLive").innerHTML = `collecting&hellip; <b>${stat.cal_samples}</b> samples &nbsp; span x/y/z = ` +
+        `<b>${sp[0]}</b> / <b>${sp[1]}</b> / <b>${sp[2]}</b> µT`;
+      $("btnCalStart").disabled = true;
+      $("btnCalFinish").disabled = false;
+      $("btnCalCancel").disabled = false;
+    } else {
+      $("btnCalStart").disabled = (stat.mag_present === false);
+      $("btnCalFinish").disabled = true;
+      $("btnCalCancel").disabled = true;
+    }
+  }
+
+  function setStatus(ok, error) {
+    const el = $("status");
+    el.className = "status " + (ok ? "ok" : "bad");
+    $("statusText").textContent = ok ? "Connected" : ("Disconnected" + (error ? " — " + error : ""));
+  }
+
+  // ---------- stream ----------
+  fetch("/meta").then((r) => r.json()).then((m) => {
+    meta = m;
+    $("metaLine").textContent =
+      `bus ${m.bus} · 0x${m.address.toString(16).toUpperCase()} · ±${m.accel_range}g · ±${m.gyro_range}°/s · ~${m.rate} Hz · β=${m.beta}`;
+  }).catch(() => {});
+
+  function connect() {
+    const es = new EventSource("/stream");
+    es.onmessage = (ev) => { sample = JSON.parse(ev.data); };
+    es.addEventListener("status", (ev) => {
+      stat = JSON.parse(ev.data);
+      setStatus(stat.connected, stat.error);
+      updateHUD();
+    });
+    es.onerror = () => setStatus(false, "stream interrupted, reconnecting…");
+  }
+  connect();
+  setInterval(updateHUD, 250);
+
+  // ---------- controls ----------
+  const post = async (path) => {
+    try { const r = await fetch(path, { method: "POST" }); return await r.json(); }
+    catch (e) { return { ok: false, error: String(e) }; }
+  };
+  const applyStat = (s) => { if (s && typeof s === "object") { stat = { ...stat, ...s }; updateHUD(); } };
+
+  $("btnZero").addEventListener("click", async () => applyStat(await post("/zero")));
+  $("btnClear").addEventListener("click", async () => applyStat(await post("/unzero")));
+  $("btnNull").addEventListener("click", async () => applyStat(await post("/null-gyro")));
+
+  $("btnCal").addEventListener("click", () => $("calPanel").classList.toggle("show"));
+  $("btnCalClose").addEventListener("click", () => $("calPanel").classList.remove("show"));
+  $("btnCalStart").addEventListener("click", async () => {
+    $("calResult").textContent = "";
+    applyStat(await post("/calibrate/start"));
+  });
+  $("btnCalCancel").addEventListener("click", async () => applyStat(await post("/calibrate/cancel")));
+  $("btnCalFinish").addEventListener("click", async () => {
+    const r = await post("/calibrate/finish");
+    applyStat(r);
+    if (r.ok && r.cal) {
+      $("calResult").textContent =
+        "saved imu_mag_cal.json\n" +
+        "offset (µT): " + r.cal.offset.map((v) => v.toFixed(1)).join(", ") + "\n" +
+        "scale:        " + r.cal.scale.map((v) => v.toFixed(3)).join(", ");
+    } else {
+      $("calResult").textContent = "⚠ " + (r.error || "calibration failed");
+    }
+  });
+
+  // ---------- orbit / zoom ----------
+  let drag = null;
+  scene.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; scene.setPointerCapture(e.pointerId); });
+  scene.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    az -= (e.clientX - drag.x) * 0.01;
+    el += (e.clientY - drag.y) * 0.01;
+    // full vertical orbit: el = 0 is straight down the +Z axis, ±PI/2 is
+    // edge-on with the XY plane, ±PI looks up at the underside. Clamp only
+    // to keep the value finite over endless dragging.
+    el = Math.max(-Math.PI, Math.min(Math.PI, el));
+    drag = { x: e.clientX, y: e.clientY };
+  });
+  const endDrag = () => { drag = null; };
+  scene.addEventListener("pointerup", endDrag);
+  scene.addEventListener("pointercancel", endDrag);
+  scene.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    zoom *= e.deltaY < 0 ? 1.1 : 0.9;
+    zoom = Math.max(0.35, Math.min(4, zoom));
+  }, { passive: false });
+})();
+</script>
+</body>
+</html>
