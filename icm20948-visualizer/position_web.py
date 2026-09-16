@@ -19,7 +19,6 @@ One-time, from the page:
 
 Example:
   ./position_web.py -b 1                 # http://<this-pi's-ip>:8000
-  ./position_web.py -b 1 --port 8080 -a 0x69
 """
 
 from __future__ import annotations
