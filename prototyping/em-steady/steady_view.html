@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EM Steady Localizer</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:      #f3f3f0;
+    --surface:   #fcfcfbe6;
+    --border:    rgba(11,11,11,0.12);
+    --text:      #101010;
+    --text-2:    #52514e;
+    --muted:     #8a8880;
+    --grid:      #dcdbd3;
+    --edge:      #b7b6aa;
+    --good:      #0ca30c;
+    --bad:       #d03b3b;
+    --warn:      #b5820a;
+    --accent:    #eb6834;
+    --axis-x:    #e5484d;
+    --axis-y:    #30a46c;
+    --axis-z:    #3b82f6;
+    --magnet:    #6b7280;
+    --imu:       #d98324;
+    --truth:     #7c3aed;
+    --calpt:     #0e7490;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:     #0c0c0d;
+      --surface:  #17171ae6;
+      --border:   rgba(255,255,255,0.12);
+      --text:     #f4f4f2;
+      --text-2:   #c3c2b7;
+      --muted:    #7f7e78;
+      --grid:     #262628;
+      --edge:     #4a4a4e;
+      --magnet:   #9aa1ad;
+      --truth:    #a78bfa;
+      --calpt:    #22d3ee;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0c0c0d; --surface: #17171ae6; --border: rgba(255,255,255,0.12);
+    --text: #f4f4f2; --text-2: #c3c2b7; --muted: #7f7e78; --grid: #262628;
+    --edge: #4a4a4e; --magnet: #9aa1ad; --truth: #a78bfa; --calpt: #22d3ee;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--page); color: var(--text);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  #top {
+    flex: 0 0 auto; z-index: 6;
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px;
+    padding: 9px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  #top h1 { margin: 0; font-size: 14px; white-space: nowrap; }
+  #top .meta { color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums;
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+            font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.ok .dot { background: var(--good); } .status.ok { color: var(--good); }
+  .status.bad .dot { background: var(--bad); } .status.bad { color: var(--bad); }
+
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; }
+  #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #scene:active { cursor: grabbing; }
+
+  .card {
+    position: absolute; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(8px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.10);
+  }
+  .cap { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .rows { display: grid; grid-template-columns: auto auto; gap: 2px 14px; }
+  .rows .k { color: var(--text-2); }
+  .rows .v { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; min-width: 5.2em; }
+
+  #rightCol { position: absolute; top: 12px; right: 12px; z-index: 5; width: min(440px, calc(100vw - 24px));
+              display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+  #rightCol .card { position: static; pointer-events: auto; }
+  #rawCard { width: 100%; padding: 8px 10px 6px; }
+  #rawCard .head { display: flex; align-items: center; gap: 8px; }
+  #rawCard .head .cap { flex: 1; }
+  #rawCard .mini { font-size: 11px; padding: 3px 8px; border-radius: 6px; }
+  #rawCanvas { display: block; width: 100%; height: 150px; margin-top: 6px; }
+  #rawCard.collapsed #rawCanvas, #rawCard.collapsed .legend { display: none; }
+  #rawCard .legend { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 11px; color: var(--text-2); margin-top: 3px; }
+  #rawCard .legend b { font-weight: 650; }
+  #readout { min-width: 180px; }
+  #readout .big { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 22px; margin: 2px 0 6px; text-align: right; }
+  #readout .vx { color: var(--axis-x); } #readout .vy { color: var(--axis-y); } #readout .vz { color: var(--axis-z); }
+  #readout .sub { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+  #truthRows { margin-top: 6px; display: none; }
+  #truthRows .v { color: var(--truth); }
+
+  #signal { left: 12px; bottom: 12px; width: min(240px, 48vw); }
+  #signal .bwrap { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 22%, transparent); overflow: hidden; margin: 6px 0 6px; }
+  #signal .bar { height: 100%; width: 0%; background: var(--good); transition: width .12s linear, background .2s; }
+  #signal .rows { font-size: 11.5px; }
+  #coilDot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); vertical-align: middle; margin-right: 4px; }
+
+  #banner {
+    top: 12px; left: 50%; transform: translateX(-50%); display: none;
+    padding: 8px 14px; font-size: 12px; border-radius: 999px; max-width: min(60vw, 560px); text-align: center;
+    border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+    color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  }
+  #banner.show { display: block; }
+  #banner.err { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+
+  .panel { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(500px, 94vw); display: none; z-index: 8; max-height: 86%; overflow: auto; }
+  .panel.show { display: block; }
+  .panel h2 { margin: 0 0 6px; font-size: 13px; }
+  .panel p { margin: 0 0 8px; color: var(--text-2); font-size: 12px; }
+  .panel .live { font-variant-numeric: tabular-nums; font-size: 12px; margin: 6px 0; color: var(--text-2); }
+  .panel .live b { color: var(--text); }
+  .meter { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 22%, transparent); overflow: hidden; margin: 4px 0 2px; }
+  .meter > div { height: 100%; width: 0%; background: var(--warn); transition: width .2s linear, background .2s; }
+  .btnrow { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+  .xyz { display: inline-flex; gap: 4px; align-items: center; color: var(--text-2); font-size: 12px; }
+  .xyz input { width: 4.6em; font: inherit; font-size: 12px; padding: 6px 7px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: right; }
+  table.pts { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  table.pts th { text-align: right; color: var(--muted); font-weight: 500; padding: 2px 4px; border-bottom: 1px solid var(--border); }
+  table.pts td { text-align: right; padding: 2px 4px; }
+  table.pts th:first-child, table.pts td:first-child { text-align: left; }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--text-2); white-space: pre-wrap; }
+  .hint { position: absolute; right: 12px; bottom: 12px; color: var(--muted); font-size: 11px; pointer-events: none; }
+
+  #controls {
+    flex: 0 0 auto; z-index: 6;
+    display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center;
+    padding: 8px 10px; background: var(--surface); border-top: 1px solid var(--border);
+  }
+  button {
+    font: inherit; font-size: 12px; padding: 7px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.coil-on  { border-color: var(--good); color: var(--good); }
+  button.coil-off { background: var(--bad); border-color: var(--bad); color: #fff; }
+  #controls .sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+
+  @media (max-width: 560px) {
+    #readout { min-width: 0; padding: 8px 10px; }
+    #readout .big { font-size: 18px; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>EM Steady Localizer</h1>
+  <div class="meta" id="metaLine">connecting&hellip;</div>
+  <div class="status" id="status"><span class="dot"></span><span id="statusText">connecting</span></div>
+</div>
+
+<div id="stage">
+<canvas id="scene"></canvas>
+<div id="banner" class="card"></div>
+
+<div id="rightCol">
+<div id="rawCard" class="card">
+  <div class="head">
+    <span class="cap">B<sub>em</sub> = measured − Earth (µT, reference axes)</span>
+    <button id="btnRawMode" class="mini" title="absolute values, or each axis with its average removed">absolute</button>
+    <button id="btnRawHide" class="mini">hide</button>
+  </div>
+  <canvas id="rawCanvas"></canvas>
+  <div class="legend">
+    <span><b style="color:var(--axis-x)">x</b> <b style="color:var(--axis-y)">y</b> <b style="color:var(--axis-z)">z</b></span>
+    <span>every magnetometer sample</span>
+    <span id="rawSpan"></span>
+  </div>
+</div>
+<div id="readout" class="card">
+  <div class="cap">position (cm)</div>
+  <div class="big" id="vRange">&mdash;</div>
+  <div class="rows">
+    <span class="k">x</span><span class="v vx" id="vX">&mdash;</span>
+    <span class="k">y</span><span class="v vy" id="vY">&mdash;</span>
+    <span class="k">z</span><span class="v vz" id="vZ">&mdash;</span>
+  </div>
+  <div class="rows sub">
+    <span class="k">yaw / pitch / roll</span><span class="v" id="vEuler">&mdash;</span>
+    <span class="k">since re-zero</span><span class="v" id="vRefAge">&mdash;</span>
+  </div>
+  <div class="rows" id="truthRows">
+    <span class="k">sim truth</span><span class="v" id="vTruth">&mdash;</span>
+    <span class="k">error</span><span class="v" id="vErr">&mdash;</span>
+  </div>
+</div>
+</div><!-- #rightCol -->
+
+<div id="signal" class="card">
+  <div class="cap">electromagnet signal</div>
+  <div class="bwrap"><div class="bar" id="sigBar"></div></div>
+  <div class="rows">
+    <span class="k">|B<sub>em</sub>|</span><span class="v" id="sB">&mdash;</span>
+    <span class="k">jitter</span><span class="v" id="sJ">&mdash;</span>
+    <span class="k">|measured|</span><span class="v" id="sT">&mdash;</span>
+    <span class="k">|Earth|</span><span class="v" id="sE">&mdash;</span>
+    <span class="k">Earth-fit floor</span><span class="v" id="sR">&mdash;</span>
+    <span class="k"><span id="coilDot"></span>coil</span><span class="v" id="sC">&mdash;</span>
+  </div>
+</div>
+
+<div id="earthPanel" class="card panel">
+  <h2>Earth field calibration</h2>
+  <p>Learns the hard/soft-iron correction and Earth's field as a fixed vector in the reference frame.
+     <span id="earthCoilNote">Clicking <b>Start</b> turns the coil off.</span>
+     Then slowly tumble the board through <b>every</b> orientation &mdash; each face up and down, and
+     round in heading &mdash; for ~30&nbsp;s, without carrying it far, and click <b>Finish tumble</b>.
+     Then set it <b>still on its mark</b> and click <b>Capture on mark</b>.
+     Use <b>Capture on mark</b> alone to refresh Earth's field later.</p>
+  <div class="live" id="earthLive">not started</div>
+  <div class="meter"><div id="earthMeter"></div></div>
+  <div class="live" style="margin-top:0">orientation coverage &mdash; need <span id="earthNeed">60</span>%, aim for 90%+</div>
+  <div class="btnrow">
+    <button id="btnEarthStart" class="primary">Start</button>
+    <button id="btnEarthFinish" disabled>Finish tumble</button>
+    <button id="btnEarthMark" disabled>Capture on mark</button>
+    <button id="btnEarthCancel" disabled>Cancel</button>
+    <button id="btnEarthClose">Close</button>
+  </div>
+  <div class="mono" id="earthResult"></div>
+</div>
+
+<div id="calPanel" class="card panel">
+  <h2>Electromagnet calibration</h2>
+  <p>Hold the board still with the <b>chip</b> at a known offset from the magnet's centre, in the
+     <b>reference axes</b> (the board's axes when it sits on its mark), at least
+     <span id="nfCm">5</span>&nbsp;cm out. The board may be turned any way while you do this.
+     One point is enough to start; 3&ndash;6 spread around the cube average out placement error.
+     Redo these after a new Earth calibration.</p>
+  <div class="btnrow">
+    <span class="xyz">x <input id="px" type="number" step="0.5" value="0"></span>
+    <span class="xyz">y <input id="py" type="number" step="0.5" value="0"></span>
+    <span class="xyz">z <input id="pz" type="number" step="0.5" value="10"></span>
+    <span class="xyz">cm</span>
+  </div>
+  <div class="btnrow">
+    <button id="btnCapture" class="primary">Capture point</button>
+    <button id="btnCapCancel" disabled>Cancel</button>
+    <button id="btnUndo">Undo last</button>
+    <button id="btnClearPts">Clear all</button>
+    <button id="btnCalClose">Close</button>
+  </div>
+  <div class="live" id="capLive"></div>
+  <table class="pts" id="ptsTable"></table>
+  <div class="mono" id="momentLine"></div>
+</div>
+
+<div class="hint">drag to orbit &middot; wheel to zoom &middot; double-click to reset view</div>
+</div>
+
+<div id="controls">
+  <button id="btnCoil" class="coil-on" title="hold the electromagnet on, or off">Coil: on</button>
+  <span class="sep"></span>
+  <button id="btnRef" title="board squared on its mark: take this pose as the reference (clears yaw drift)">Re-zero on mark</button>
+  <button id="btnNull" title="hold the board still for ~1 s">Null gyro</button>
+  <span class="sep"></span>
+  <button id="btnEarth">Earth field&hellip;</button>
+  <button id="btnCal" class="primary">Calibrate EM&hellip;</button>
+  <button id="btnFlip">Flip side</button>
+  <button id="btnReset">Reset track</button>
+  <button id="btnTrail">Clear trail</button>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  let sample = null, stat = {}, meta = { cube_half_cm: 15, near_field_cm: 5 };
+  let lastErr = null, errTimer = null;    // last failed button press, shown briefly
+
+  // ---------- projection ----------
+  const scene = $("scene"), ctx = scene.getContext("2d");
+  const CAM_DIST = 70;                 // in cm
+  const AZ0 = -0.75, EL0 = 0.45;      // el = camera height above the horizon (rad), + = from above
+  let az = AZ0, el = EL0, zoom = 1.0;
+  let W = 0, H = 0, cx = 0, cy = 0, ppc = 10;
+
+  function toView(p) {
+    const ca = Math.cos(az), sa = Math.sin(az);
+    const x = p[0]*ca - p[1]*sa, y = p[0]*sa + p[1]*ca, z = p[2];
+    const ce = Math.cos(el), se = Math.sin(el);
+    return [x, z*ce + y*se, y*ce - z*se];
+  }
+  function project(p) {
+    const v = toView(p);
+    const depth = CAM_DIST + v[2];
+    const s = ppc * zoom * CAM_DIST / Math.max(1, depth);
+    return { x: cx + v[0]*s, y: cy - v[1]*s };
+  }
+  function resize() {
+    const r = scene.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    W = r.width; H = r.height;
+    const pw = Math.round(W*dpr), ph = Math.round(H*dpr);
+    if (scene.width !== pw || scene.height !== ph) { scene.width = pw; scene.height = ph; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W/2; cy = H/2 + H*0.04;
+    ppc = Math.min(W, H) * 0.30 / (meta.cube_half_cm || 15);
+  }
+
+  function line3(a, b, style, width, dash) {
+    const pa = project(a), pb = project(b);
+    ctx.strokeStyle = style; ctx.lineWidth = width || 1; ctx.setLineDash(dash || []);
+    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  function dot3(p, rad, style) {
+    const q = project(p); ctx.fillStyle = style;
+    ctx.beginPath(); ctx.arc(q.x, q.y, rad, 0, 7); ctx.fill(); return q;
+  }
+  function text3(p, s, color, align) {
+    const q = project(p); ctx.fillStyle = color; ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textAlign = align || "center"; ctx.textBaseline = "middle"; ctx.fillText(s, q.x, q.y);
+  }
+  function circle3(center, u, v, r, style, width, dash) {
+    ctx.strokeStyle = style; ctx.lineWidth = width || 1; ctx.setLineDash(dash || []);
+    ctx.beginPath();
+    for (let k = 0; k <= 64; k++) {
+      const t = k/64*Math.PI*2, c = Math.cos(t)*r, s = Math.sin(t)*r;
+      const q = project([center[0]+u[0]*c+v[0]*s, center[1]+u[1]*c+v[1]*s, center[2]+u[2]*c+v[2]*s]);
+      k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  // rotate v by quaternion q = [w, x, y, z] (board -> reference)
+  function qrot(q, v) {
+    const [w, x, y, z] = q;
+    const tx = 2*(y*v[2] - z*v[1]), ty = 2*(z*v[0] - x*v[2]), tz = 2*(x*v[1] - y*v[0]);
+    return [v[0] + w*tx + (y*tz - z*ty), v[1] + w*ty + (z*tx - x*tz), v[2] + w*tz + (x*ty - y*tx)];
+  }
+
+  function drawCube() {
+    const h = meta.cube_half_cm || 15, g = css("--grid"), e = css("--edge");
+    for (let v = -h; v <= h + 1e-6; v += 5) {
+      line3([v, -h, -h], [v, h, -h], g, 1);
+      line3([-h, v, -h], [h, v, -h], g, 1);
+    }
+    const c = [[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]];
+    for (const [a, b] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]])
+      line3(c[a], c[b], e, 1);
+    const ax = [["x", [1,0,0], "--axis-x"], ["y", [0,1,0], "--axis-y"], ["z", [0,0,1], "--axis-z"]];
+    for (const [name, d, col] of ax) {
+      line3([-h*d[0], -h*d[1], -h*d[2]], [h*d[0], h*d[1], h*d[2]], css(col), 1.2, [2, 4]);
+      text3([(h+2)*d[0], (h+2)*d[1], (h+2)*d[2]], "+" + name, css(col));
+    }
+    text3([h, -h - 2.5, -h], h + " cm", css("--muted"));
+  }
+
+  function drawMagnet() {
+    const m = stat.moment, col = css("--magnet");
+    const nf = meta.near_field_cm || 5;
+    circle3([0,0,0], [1,0,0], [0,1,0], nf, css("--muted"), 1, [2, 4]);
+    circle3([0,0,0], [1,0,0], [0,0,1], nf, css("--muted"), 1, [2, 4]);
+    circle3([0,0,0], [0,1,0], [0,0,1], nf, css("--muted"), 1, [2, 4]);
+    dot3([0,0,0], 5, col);
+    if (m) {
+      const n = Math.hypot(m[0], m[1], m[2]) || 1, L = 4;
+      const d = [m[0]/n*L, m[1]/n*L, m[2]/n*L];
+      line3([-d[0], -d[1], -d[2]], d, col, 3);
+      text3([d[0]*1.45, d[1]*1.45, d[2]*1.45], "N", col);
+    }
+  }
+
+  // ---------- trail ----------
+  const trail = [];
+  function pushTrail(p) {
+    const l = trail[trail.length - 1];
+    if (!l || Math.hypot(p[0]-l[0], p[1]-l[1], p[2]-l[2]) > 0.2) {
+      trail.push(p.slice()); if (trail.length > 300) trail.shift();
+    }
+  }
+
+  function render() {
+    resize();
+    ctx.clearRect(0, 0, W, H);
+    drawCube();
+    drawMagnet();
+    const h = meta.cube_half_cm || 15;
+
+    for (const pt of (stat.cal_points || [])) {
+      const q = project(pt.p); ctx.strokeStyle = css("--calpt"); ctx.lineWidth = 1.6;
+      ctx.strokeRect(q.x - 4, q.y - 4, 8, 8);
+    }
+
+    const imu = css("--imu");
+    for (let i = 1; i < trail.length; i++) {
+      ctx.globalAlpha = 0.08 + 0.6 * (i / trail.length);
+      line3(trail[i-1], trail[i], imu, 1.6);
+    }
+    ctx.globalAlpha = 1;
+
+    if (sample && sample.truth) {
+      const q = project(sample.truth); ctx.strokeStyle = css("--truth"); ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 9, 0, 7); ctx.stroke();
+    }
+
+    const pos = sample && sample.pos;
+    if (pos) {
+      line3([pos[0], pos[1], -h], pos, css("--muted"), 1, [3, 4]);
+      ctx.globalAlpha = 0.45; dot3([pos[0], pos[1], -h], 3, css("--muted")); ctx.globalAlpha = 1;
+      line3([0,0,0], pos, css("--muted"), 1.2);
+      // the board's own axes, so its orientation is visible
+      if (sample.quat) {
+        const L = 3;
+        [[1,0,0,"--axis-x"], [0,1,0,"--axis-y"], [0,0,1,"--axis-z"]].forEach(([a, b, c, col]) => {
+          const d = qrot(sample.quat, [a*L, b*L, c*L]);
+          line3(pos, [pos[0]+d[0], pos[1]+d[1], pos[2]+d[2]], css(col), 2.2);
+        });
+      }
+      const q = project(pos);
+      ctx.fillStyle = imu; ctx.globalAlpha = 0.2;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 13, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+      dot3(pos, 6, imu);
+    }
+    drawRaw();
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+
+
+  // ---------- B_em chart ----------
+  const rawPts = [];       // [t, x, y, z]
+  let rawCentered = false;
+  try { rawCentered = localStorage.getItem("emsteady.rawMode") === "ctr"; } catch (e) {}
+  try { if (localStorage.getItem("emsteady.rawHide") === "1") $("rawCard").classList.add("collapsed"); } catch (e) {}
+  function rawPush(smp) {
+    for (const r of (smp.raw || [])) rawPts.push(r);
+    const cutoff = (smp.t || Date.now() / 1000) - (meta.chart_s || 5) - 1;
+    while (rawPts.length && rawPts[0][0] < cutoff) rawPts.shift();
+  }
+  const rawCv = $("rawCanvas"), rctx = rawCv.getContext("2d");
+  function drawRaw() {
+    if ($("rawCard").classList.contains("collapsed")) return;
+    const r = rawCv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const w = r.width, h = r.height;
+    if (rawCv.width !== Math.round(w*dpr) || rawCv.height !== Math.round(h*dpr)) {
+      rawCv.width = Math.round(w*dpr); rawCv.height = Math.round(h*dpr);
+    }
+    rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    rctx.clearRect(0, 0, w, h);
+    if (!rawPts.length) return;
+    const span = meta.chart_s || 5;
+    const tNow = rawPts[rawPts.length - 1][0], t0 = tNow - span;
+    const L = 40, R = 4, T = 4, B = 14, pw = w - L - R, ph = h - T - B;
+    const X = (t) => L + (t - t0) / span * pw;
+
+    const vis = rawPts.filter((p) => p[0] >= t0);
+    const off = [0, 0, 0];
+    if (rawCentered && vis.length)
+      for (let k = 0; k < 3; k++) off[k] = vis.reduce((a, p) => a + p[k+1], 0) / vis.length;
+    let lo = Infinity, hi = -Infinity;
+    for (const p of vis) for (let k = 0; k < 3; k++) { const v = p[k+1] - off[k]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const Y = (v) => T + (hi - v) / (hi - lo) * ph;
+
+    rctx.strokeStyle = css("--grid"); rctx.lineWidth = 1;
+    rctx.beginPath(); rctx.moveTo(L, T); rctx.lineTo(L, T + ph); rctx.lineTo(L + pw, T + ph); rctx.stroke();
+    if (lo < 0 && hi > 0) { rctx.setLineDash([3, 3]); rctx.beginPath(); rctx.moveTo(L, Y(0)); rctx.lineTo(L + pw, Y(0)); rctx.stroke(); rctx.setLineDash([]); }
+    rctx.fillStyle = css("--muted"); rctx.font = "10px system-ui, sans-serif"; rctx.textBaseline = "middle"; rctx.textAlign = "right";
+    for (const v of [hi - pad, (hi + lo) / 2, lo + pad]) rctx.fillText(v.toFixed(Math.abs(hi - lo) < 10 ? 1 : 0), L - 4, Y(v));
+    rctx.textAlign = "left"; rctx.textBaseline = "alphabetic";
+    rctx.fillText("−" + span + " s", L, h - 2);
+    rctx.textAlign = "right"; rctx.fillText("now", L + pw, h - 2);
+
+    const cols = [css("--axis-x"), css("--axis-y"), css("--axis-z")];
+    for (let k = 0; k < 3; k++) {
+      rctx.strokeStyle = cols[k]; rctx.lineWidth = 1.3; rctx.beginPath();
+      vis.forEach((p, i) => { const x = X(p[0]), y = Y(p[k+1] - off[k]); i ? rctx.lineTo(x, y) : rctx.moveTo(x, y); });
+      rctx.stroke();
+    }
+    const last = rawPts[rawPts.length - 1];
+    $("rawSpan").textContent = `last x/y/z ${last[1].toFixed(1)} / ${last[2].toFixed(1)} / ${last[3].toFixed(1)}`;
+  }
+  function setRawModeLabel() { $("btnRawMode").textContent = rawCentered ? "centered" : "absolute"; }
+  setRawModeLabel();
+  $("btnRawMode").onclick = () => {
+    rawCentered = !rawCentered; setRawModeLabel();
+    try { localStorage.setItem("emsteady.rawMode", rawCentered ? "ctr" : "abs"); } catch (e) {}
+  };
+  $("btnRawHide").onclick = () => {
+    const c = $("rawCard").classList.toggle("collapsed");
+    $("btnRawHide").textContent = c ? "show" : "hide";
+    try { localStorage.setItem("emsteady.rawHide", c ? "1" : "0"); } catch (e) {}
+  };
+  if ($("rawCard").classList.contains("collapsed")) $("btnRawHide").textContent = "show";
+
+  // ---------- HUD ----------
+  const f1 = (v) => (v >= 0 ? "+" : "") + v.toFixed(1);
+  const ut = (v, d) => v != null ? v.toFixed(d == null ? 2 : d) + " µT" : "–";
+  function onSample() {
+    const pos = sample.pos;
+    $("vRange").textContent = pos ? sample.range_cm.toFixed(1) + " cm" : "–";
+    $("vX").textContent = pos ? f1(pos[0]) : "–";
+    $("vY").textContent = pos ? f1(pos[1]) : "–";
+    $("vZ").textContent = pos ? f1(pos[2]) : "–";
+    if (pos) pushTrail(pos);
+    $("vEuler").textContent = sample.euler ? sample.euler.map((v) => v.toFixed(0) + "°").join(" ") : "–";
+    if (sample.truth) {
+      $("truthRows").style.display = "grid";
+      const t = sample.truth;
+      $("vTruth").textContent = t.map((v) => v.toFixed(1)).join(" ");
+      $("vErr").textContent = pos ? Math.hypot(pos[0]-t[0], pos[1]-t[1], pos[2]-t[2]).toFixed(2) + " cm" : "–";
+    }
+    const b = sample.b_mag;
+    $("sB").textContent = ut(b);
+    $("sJ").textContent = sample.jitter_ut != null ? "±" + sample.jitter_ut.toFixed(2) + " µT" : "–";
+    $("sT").textContent = ut(sample.total_ut, 1);
+    $("sE").textContent = ut(sample.earth_ut, 1);
+    $("coilDot").style.background = sample.coil ? css("--accent") : css("--muted");
+    $("sC").textContent = meta.no_coil ? "not controlled" : sample.coil ? "on" : "off";
+    const lab = sample.signal || "none";
+    const pct = b == null ? 0 : Math.max(2, Math.min(100, Math.log10(Math.max(b, 0.1) / 0.1) / 3 * 100));
+    $("sigBar").style.width = pct + "%";
+    $("sigBar").style.background = lab === "good" ? css("--good") : lab === "ok" ? css("--axis-z") :
+                                   lab === "weak" ? css("--warn") : css("--bad");
+  }
+
+  function updateUI() {
+    const st = sample ? sample.state : null;
+    let msg = "", err = false;
+    if (stat.connected === false) { msg = "Sensor disconnected — " + (stat.error || "retrying…"); err = true; }
+    else if (lastErr) { msg = lastErr; err = true; }
+    else if (stat.cal_error) { msg = stat.cal_error; err = true; }
+    else if (stat.nulling_gyro) msg = "Nulling gyro — hold the board still…";
+    else if (!stat.have_ref || stat.ref_pending) msg = "Waiting for the reference pose — board on its mark, still.";
+    else if (stat.earth_phase === "collect") msg = meta.no_coil
+      ? "Earth calibration — keep the board far from the magnet and tumble it through every orientation…"
+      : "Earth calibration — coil off; tumble the board through every orientation…";
+    else if (stat.earth_phase === "need-mark") msg = "Tumble fitted — set the board still on its mark, then click “Capture on mark”.";
+    else if (stat.earth_phase === "mark") msg = `Measuring Earth's field — hold still… ${stat.earth_mark_n}/${stat.earth_mark_target}`;
+    else if (!stat.have_earth) msg = "No Earth-field calibration — open “Earth field…”.";
+    else if (stat.coil_enabled === false && stat.coil_control)
+      msg = "Coil is OFF — |Bem| should now read ≈ 0 µT wherever the board is and however it's turned (a check of the Earth cancellation).";
+    else if (stat.capturing) msg = `Capturing calibration point — hold still… ${stat.capture_n}/${stat.capture_target}`;
+    else if (st === "no-estimate") msg = "Collecting samples…";
+    else if (stat.orientation_gaps) { msg = `Orientation lost (${stat.orientation_gaps} sensor dropout${stat.orientation_gaps > 1 ? "s" : ""}) — put the board on its mark and re-zero.`; err = true; }
+    else if (!stat.have_cal) msg = "Electromagnet not calibrated — open “Calibrate EM…” and capture a point at a known position.";
+    else if (sample && sample.signal === "none") { msg = "No electromagnet signal — is the coil powered? Move closer."; err = true; }
+    else if (sample && sample.near_field) msg = `Inside ${meta.near_field_cm} cm of the magnet — the dipole model is unreliable here.`;
+    else if (sample && sample.signal === "weak") msg = "Weak signal — expect a noisy fix.";
+    const bn = $("banner");
+    bn.className = "card" + (msg ? " show" : "") + (err ? " err" : "");
+    bn.textContent = msg;
+
+    $("vRefAge").textContent = stat.ref_age_s != null ? fmtAge(stat.ref_age_s) : "–";
+    const e = stat.earth;
+    $("sR").textContent = e && e.residual_ut != null ? "±" + e.residual_ut.toFixed(2) + " µT" : "–";
+    const phase = stat.earth_phase;
+
+    // coil button
+    const coilOn = stat.coil_enabled !== false;
+    $("btnCoil").disabled = !stat.coil_control;
+    $("btnCoil").textContent = !stat.coil_control ? "Coil: external" : coilOn ? "Coil: on" : "Coil: off";
+    $("btnCoil").className = !stat.coil_control ? "" : coilOn ? "coil-on" : "coil-off";
+    $("btnRef").disabled = !!stat.earth_phase;
+
+    // electromagnet calibration panel
+    $("btnCapture").disabled = !!stat.capturing || !stat.have_earth || !!stat.earth_phase ||
+                               (stat.coil_control && !coilOn);
+    $("btnCapCancel").disabled = !stat.capturing;
+    $("capLive").textContent = stat.capturing ? `averaging ${stat.capture_n} / ${stat.capture_target} estimates…` : "";
+    const pts = stat.cal_points || [];
+    $("ptsTable").innerHTML = pts.length ?
+      "<tr><th>#</th><th>x</th><th>y</th><th>z</th><th>|B| µT</th><th>field resid µT</th><th>solves off by</th></tr>" +
+      pts.map((p, i) => `<tr><td>${i+1}</td><td>${p.p[0]}</td><td>${p.p[1]}</td><td>${p.p[2]}</td>` +
+        `<td>${Math.hypot(...p.b).toFixed(2)}</td><td>${p.b_resid_ut.toFixed(2)}</td>` +
+        `<td>${p.pos_err_cm == null ? "–" : p.pos_err_cm.toFixed(2) + " cm"}</td></tr>`).join("") : "";
+    $("momentLine").textContent = stat.moment ?
+      `moment m = [${stat.moment.join(", ")}] µT·cm³   |m| = ${stat.moment_k}` : "";
+    $("btnFlip").disabled = !stat.have_cal;
+
+    // Earth panel
+    if (phase === "collect") {
+      const cv = stat.earth_coverage || 0, ok = stat.earth_n >= stat.earth_min_n && cv >= stat.earth_min_coverage;
+      $("earthLive").innerHTML = `collecting… <b>${stat.earth_n}</b> samples (need ${stat.earth_min_n}) · ` +
+                                 `coverage <b>${Math.round(cv * 100)}%</b>` + (ok ? " — ready to finish" : "");
+      $("earthMeter").style.width = Math.round(cv * 100) + "%";
+      $("earthMeter").style.background = cv >= 0.9 ? css("--good") : cv >= stat.earth_min_coverage ? css("--axis-z") : css("--warn");
+    } else {
+      $("earthLive").textContent = stat.earth_error ? "⚠ " + stat.earth_error
+        : phase === "need-mark" ? "tumble fitted — board on its mark, still, then Capture on mark"
+        : phase === "mark" ? `measuring on the mark… ${stat.earth_mark_n} / ${stat.earth_mark_target}`
+        : stat.have_earth ? "calibration loaded" : "not calibrated";
+      $("earthMeter").style.width = "0%";
+    }
+    if (stat.earth_min_coverage != null) $("earthNeed").textContent = Math.round(stat.earth_min_coverage * 100);
+    if (stat.earth_error && phase === "collect") $("earthResult").textContent = "⚠ " + stat.earth_error;
+    $("btnEarthStart").disabled = !!phase || !stat.have_ref;
+    $("btnEarthFinish").disabled = phase !== "collect";
+    $("btnEarthMark").disabled = phase === "collect" || phase === "mark" || !(stat.have_earth || phase === "need-mark");
+    $("btnEarthCancel").disabled = !phase;
+    if (!phase && e) $("earthResult").textContent = earthText(e);
+    metaLine();
+  }
+
+  function fmtAge(s) {
+    return s < 120 ? s.toFixed(0) + " s" : (s / 60).toFixed(1) + " min";
+  }
+  function earthText(e) {
+    return `Earth (reference axes): [${e.earth_ref_ut.map((v) => v.toFixed(1)).join(", ")}] µT` +
+           `\n|E| = ${e.earth_ut} µT   dip ${e.dip_deg}°   tumble radius ${e.radius_ut} µT` +
+           `\nfrom ${e.n} samples, coverage ${Math.round((e.coverage || 0) * 100)}%` +
+           `\nlength spread ±${e.residual_ut} µT rms  (the floor for |Bem|)` +
+           `\nalong-gravity spread ±${e.vertical_rms_ut} µT rms` +
+           `\ngyro tracking during tumble ±${e.gyro_resid_ut} µT rms  (large = orientation slipped)` +
+           `\nhard iron (µT): ${e.offset.map((v) => v.toFixed(1)).join(", ")}` +
+           `\nsoft iron:      ${e.scale.map((v) => v.toFixed(3)).join(", ")}`;
+  }
+
+  function metaLine() {
+    let s = `${meta.sim ? "SIMULATION · " : ""}always-on coil · ` +
+            (meta.no_coil ? "coil powered externally" : `IN1/IN2 = GPIO${meta.in1}/${meta.in2}`) +
+            ` · ${meta.block_samples || 10} samples / fix`;
+    if (stat.imu_errors) s += ` · ${stat.imu_errors} I2C error${stat.imu_errors > 1 ? "s" : ""}`;
+    if (stat.gyro_bias) s += ` · gyro bias ${stat.gyro_bias.map((v) => v.toFixed(2)).join("/")} °/s` + (stat.still ? " (still: refining)" : "");
+    $("metaLine").textContent = s;
+  }
+  function setStatus(ok, error) {
+    $("status").className = "status " + (ok ? "ok" : "bad");
+    $("statusText").textContent = ok ? "Connected" : ("Disconnected" + (error ? " — " + error : ""));
+  }
+
+  // ---------- stream ----------
+  fetch("/meta").then((r) => r.json()).then((m) => {
+    meta = m; $("nfCm").textContent = m.near_field_cm;
+    if (m.no_coil) $("earthCoilNote").innerHTML = "The coil isn't under this Pi's control, so first <b>move the board well away from the magnet</b> (or unpower it).";
+    metaLine();
+  }).catch(() => {});
+  const es = new EventSource("/stream");
+  es.onmessage = (ev) => { sample = JSON.parse(ev.data); rawPush(sample); onSample(); };
+  es.addEventListener("status", (ev) => { stat = JSON.parse(ev.data); setStatus(stat.connected, stat.connected ? null : stat.error); updateUI(); });
+  es.onerror = () => setStatus(false, "stream interrupted, reconnecting…");
+
+  // ---------- controls ----------
+  const post = async (path, body) => {
+    try {
+      const r = await fetch(path, { method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined });
+      const j = await r.json();
+      if (j && typeof j === "object") {
+        const { ok, error, result, ...rest } = j;
+        stat = { ...stat, ...rest };
+        lastErr = ok === false ? error : null;
+        if (lastErr) { clearTimeout(errTimer); errTimer = setTimeout(() => { lastErr = null; updateUI(); }, 6000); }
+        updateUI();
+      }
+      return j;
+    } catch (e) { return { ok: false, error: String(e) }; }
+  };
+  const num = (id) => parseFloat($(id).value);
+
+  $("btnCoil").onclick = () => post(stat.coil_enabled === false ? "/coil/on" : "/coil/off");
+  $("btnRef").onclick = () => { trail.length = 0; post("/ref/set"); };
+  $("btnNull").onclick = () => post("/null-gyro");
+  $("btnCal").onclick = () => $("calPanel").classList.toggle("show");
+  $("btnCalClose").onclick = () => $("calPanel").classList.remove("show");
+  $("btnCapture").onclick = () => { trail.length = 0; post("/cal/capture", { p: [num("px"), num("py"), num("pz")] }); };
+  $("btnCapCancel").onclick = () => post("/cal/cancel");
+  $("btnUndo").onclick = () => { trail.length = 0; post("/cal/undo"); };
+  $("btnClearPts").onclick = () => { if (confirm("Delete all calibration points?")) { trail.length = 0; post("/cal/clear"); } };
+  $("btnFlip").onclick = () => { trail.length = 0; post("/flip"); };
+  $("btnReset").onclick = () => { trail.length = 0; post("/track/reset"); };
+  $("btnTrail").onclick = () => { trail.length = 0; };
+  $("btnEarth").onclick = () => $("earthPanel").classList.toggle("show");
+  $("btnEarthClose").onclick = () => $("earthPanel").classList.remove("show");
+  $("btnEarthStart").onclick = () => { $("earthResult").textContent = ""; trail.length = 0; post("/earth/start"); };
+  $("btnEarthCancel").onclick = () => post("/earth/cancel");
+  $("btnEarthFinish").onclick = async () => {
+    const r = await post("/earth/finish");
+    $("earthResult").textContent = r.ok ? "" : "⚠ " + (r.error || "calibration failed");
+  };
+  $("btnEarthMark").onclick = () => { $("earthResult").textContent = ""; trail.length = 0; post("/earth/mark"); };
+
+  // remember the last calibration position typed
+  try {
+    const saved = JSON.parse(localStorage.getItem("emsteady.calpos") || "null");
+    if (saved) { $("px").value = saved[0]; $("py").value = saved[1]; $("pz").value = saved[2]; }
+  } catch (e) {}
+  for (const id of ["px", "py", "pz"]) $(id).addEventListener("change", () => {
+    try { localStorage.setItem("emsteady.calpos", JSON.stringify([num("px"), num("py"), num("pz")])); } catch (e) {}
+  });
+
+  // ---------- orbit / zoom ----------
+  let drag = null;
+  scene.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; scene.setPointerCapture(e.pointerId); });
+  scene.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    az += (e.clientX - drag.x) * 0.01;
+    el = Math.max(-Math.PI/2, Math.min(Math.PI/2, el + (e.clientY - drag.y) * 0.01));
+    drag = { x: e.clientX, y: e.clientY };
+  });
+  const endDrag = () => { drag = null; };
+  scene.addEventListener("pointerup", endDrag);
+  scene.addEventListener("pointercancel", endDrag);
+  scene.addEventListener("dblclick", () => { az = AZ0; el = EL0; zoom = 1; });
+  scene.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    zoom = Math.max(0.4, Math.min(4, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+  }, { passive: false });
+})();
+</script>
+</body>
+</html>

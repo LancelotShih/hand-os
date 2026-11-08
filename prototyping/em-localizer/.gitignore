@@ -1,0 +1,5 @@
+__pycache__/
+em_cal.json
+em_cal_sim.json
+imu_mag_cal.json
+imu_mag_cal_sim.json

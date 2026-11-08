@@ -1,0 +1,95 @@
+# earth-cancel: critique
+
+Written 2026-11-03 from the code alone, not from logs or runs. Line links point at the code as it was that day.
+
+## How the code works
+
+The goal is to remove Earth's field at any orientation, so that whatever is left is the coil's field. The target is under 5 µT everywhere (`PASS_UT`, [config.py:41](config.py#L41)).
+
+- **The idea.** Earth is one fixed vector, measured once as a 0.3 s average. The gyro and accelerometer follow how the board turns. The magnetometer isn't used for that, because the coil would throw it off. Each new reading is turned back into the frame where Earth was measured, and Earth is subtracted. What's left is error.
+- **Calibration.** The tumble fits a midpoint and one stretch per chip axis, from the magnetometer alone. Gyro bias is re-measured whenever the board rests for 1 s. The ICM's magnetometer readings are matched to the orientation from 12 ms earlier, when they were taken. The MMC's readings use their own timestamps.
+- **The MMC5983MA beside it.** Each reading is a SET/RESET pair, which cancels the chip's own error. By default it gets no software midpoint. The tumble also fits how it sits on the board (quarter turns plus a tilt), using the gyro. The ICM gets the same fit, but it's only displayed.
+- **A fair comparison.** Both trackers get the same gyro and accelerometer readings. Error from turning is shared, so a difference between them comes from the sensors.
+
+## What was tried before
+
+1. **Subtract a "field zero"** ([mag_localize.py](../icm20948-visualizer/mag_localize.py)). Turn readings into a world frame, then subtract one reading taken with the magnet off. Calibration used each axis's lowest and highest readings.
+2. **Pulse the coil** ([em_localize.py](../em-localizer/em_localize.py)). Each axis is fitted as background, plus slow drift, plus the coil switching. Earth, the board's own magnetism and nearby steel all drop out, and no orientation is needed.
+3. **Coil always on, Earth as a fixed vector** ([earth_model.py](../em-steady/earth_model.py)). The same idea as earth-cancel, but Earth is measured on a physical mark with the coil switched off. Two checks need no gyro: field strength, and field along gravity. Its loader rejects results from an older version that followed the gyro through the whole tumble.
+4. **earth-cancel.** Approach 3 without the coil, to test the cancelling on its own. An earlier three-pose "Zero" step was removed ([tests/test_server.py:93](tests/test_server.py#L93)).
+
+Approaches 1 and 3 use the axis map that [imu.py:15-19](imu.py#L15-L19) says is wrong, so neither got a fair test.
+
+## Weak points
+
+### 1. Orientation sets the floor
+
+Each degree of orientation error leaves roughly 1 µT. Heading (turning about vertical) has no absolute check: only the gyro bias and re-captures hold it.
+
+- Idea: settle the session length and the re-capture plan first (questions 2 and 3). How much drift is allowed follows from them.
+
+### 2. Bias learning can learn a slow turn
+
+[gyro_rest.py:19-28](gyro_rest.py#L19-L28) replaces the bias with the average of any quiet second under 3 °/s. A steady 1 °/s turn would become a 60°-per-minute drift until the next true rest. The test only tries 5 °/s ([tests/test_tracker.py:89-91](tests/test_tracker.py#L89-L91)).
+
+- Idea: also require the accelerometer and magnetometer to hold steady, judge stillness against the current bias, and blend new values in slowly. em-steady's `Attitude` did all but the magnetometer check. Add a test with a 1 °/s turn.
+
+### 3. The accelerometer is always trusted and never calibrated
+
+It pulls on the tilt all the time, even while the hand accelerates ([madgwick.py:17-37](madgwick.py#L17-L37)). Its readings are used raw, with no midpoint or stretch.
+
+- Idea: calibrate it from six still faces (lowest and highest per axis), and only let it correct the tilt when it reads close to 1 g.
+
+### 4. The tumble can only stretch each axis on its own
+
+[tumble.py:73-95](tumble.py#L73-L95) fits a shape lined up with the chip's x, y and z. It can't fix axes that are mixed together or not quite square.
+
+- Idea: fit the full shape (9 numbers instead of 6). It still needs only the magnetometer.
+
+### 5. The ICM is assumed square with its gyro
+
+Its tilt is measured, shown, and ignored ([tracker.py:221-223](tracker.py#L221-L223)). Any real tilt becomes error on large turns, about 1 µT per degree.
+
+- Idea: measure it in a way that doesn't rely on a long gyro run (see 6), and apply it if it's more than about 1°.
+
+### 6. The MMC's mounting fit trusts the gyro through the whole tumble
+
+em-steady's docstring warns that one slip in a long gyro run ruins the fit. The MMC also runs with no midpoint ([config.py:12](config.py#L12)). That assumes nothing magnetic on the board sits near it, because SET/RESET only cancels the chip's own error.
+
+- Idea: fit the mounting from still poses instead, using the angle between gravity and the field, which never changes. Then no long gyro run is involved. Give the MMC its tumble midpoint unless question 4 says nothing magnetic is near.
+
+### 7. Re-capture won't work with the coil on
+
+It takes the current reading as Earth, which would include the coil ([tracker.py:153-167](tracker.py#L153-L167)). It also moves the frame to wherever the board is, which breaks anything calibrated to the coil.
+
+- Idea: this depends on questions 1 and 2. em-steady used a fixed mark and switched the coil off for about 2 s.
+
+### 8. Earth is assumed to be the same everywhere in the working space
+
+Nothing checks it.
+
+- Idea: slide the board around the space without turning it, and watch the error. If it changes, one vector isn't enough there.
+
+### 9. The simulator is idealized in these same ways
+
+Its gyro has no scale error, its accelerometer feels only gravity, its stretch is per-axis only, and its field is uniform ([tests/sim_board.py:37-43](tests/sim_board.py#L37-L43)). The tests can't catch points 3 to 6 or 8, and point 2 just lacks a test.
+
+- Idea: add those errors to the simulator, so the tests fail for the same reasons the hardware would.
+
+### Smaller points
+
+- The capture ([capture.py:25-30](capture.py#L25-L30)) averages readings in the sensor's own frame across up to 15° of wobble, then pairs the average with the middle pose. Turning each reading into one frame before averaging would remove that error.
+- The 12 ms sample age (`MAG_LATENCY_S`, [config.py:22](config.py#L22)) is a fixed guess, not measured. At 100 °/s, 5 ms of mismatch is 0.5°, about 0.5 µT.
+
+## Open questions
+
+1. Will the coil in hand-os stay on all the time, or can it be pulsed? If it can be pulsed, approach 2 removes Earth without any orientation. Roughly what field does the coil give at the far edge of the working space? That decides whether 5 µT is the right goal.
+   - Answer:
+2. With the coil on, how should Earth be re-measured, and what keeps the frame tied to the coil? A fixed mark, as em-steady used?
+   - Answer:
+3. How long should one session run without a re-capture? Will the board move around the space, or mostly turn in place?
+   - Answer:
+4. Is the MMC breakout rigidly fixed to the ICM board, with nothing magnetic close to it (screws, headers, the Pi)?
+   - Answer:
+5. Is the AK09916 known to sit square with the gyro, or was that assumed because it's built in?
+   - Answer:
