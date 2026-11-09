@@ -28,7 +28,7 @@ the gyro and accelerometer then predict Earth at every angle. It needs one tumbl
 ever, to measure how the chip sits on the board. That goes in `mmc_mounting.json`,
 which **Reset calibration** keeps, and later tumbles refresh it. If the sensor is
 remounted, tumble again. Hold the board away from magnets at startup, and click
-**Re-capture Earth** to clear yaw drift.
+**Capture at home** to clear yaw drift.
 
 The starting positions are `ICM_USE_CALIBRATION` and `MMC_USE_CALIBRATION` in
 `config.py`; the switches aren't saved between runs.
@@ -89,7 +89,8 @@ reader keeps trying to reconnect.
    of 26 directions. Earth is then measured again automatically, so hold roughly still.
 3. Turn the board. The error should stay under 5 µT.
 
-**Re-capture Earth** retakes the reading and clears yaw drift. Keep magnets away.
+**Capture at home** retakes the reading and clears yaw drift. With the coil
+off, keep magnets away. With it on, capture only on the home mark (see Position).
 
 Tumble is the main calibration. It uses only the magnetometer, so gyro error
 can't affect it, and it reports the offset and radius of each axis. A green
@@ -103,6 +104,38 @@ mounting are kept.
 
 The limit is `PASS_UT` in `config.py`. It sets every green and red on the page.
 
+## Position
+
+The **Position** card tracks the ICM in 3D around the coil, in cm from home.
+
+The coil stays on the whole time. **Capture at home** measures Earth's field with
+the board on its home mark, so the capture also holds the coil's field there. After
+that the ICM's error is the coil's field where the board is now, minus its field at
+home. `locate.py` models the coil as a bar magnet, with a pole at each end, and
+solves for the position whose field matches.
+
+1. Put the board on its home mark, squared to the tape, with the coil on. Start
+   `./earth_cancel.py`, or click **Capture at home**. Home is wherever this
+   happens, so always do it on the mark.
+2. **Calibration points.** Put the board at a spot you've measured, flat and square
+   as at home. Enter how far it is from home along the ICM's x, y and z (z is up),
+   hold still and click **Capture point** (about 1 s). After 4 points the coil is
+   found. 8–12 points, spread around and some raised, fit better. **Left out** is
+   the honest accuracy: each point solved by a coil fitted without it.
+3. Move the board. **Capture at home** clears drift and restarts the track at home.
+
+**Point an end of the coil at the working area.** The coil's field is the same all
+the way round its long axis. Beside the middle of the coil, moving round it barely
+changes the reading, so a position there can't be pinned down. **Precision here**
+shows how much the position can move per µT of field error. At 13 cm it's about
+1 mm per µT within 50° of the coil's axis, 2.8 at 70°, and unusable at 90°. With
+the coil broadside to home, home itself is at 90°.
+
+The points and the fitted coil are saved in `coil_cal.json` and loaded on the next
+launch. They hold only while home stays in the same spot: if the tape moves, click
+**Clear points** and capture new ones. Tumble with the coil off or far away: it
+needs the chip to see Earth alone.
+
 ## Logging
 
 Click **Start log**, then **Stop log**. A link to the plot appears next to the
@@ -111,7 +144,8 @@ button. Each log gets its own folder named by its start time:
 ```
 logs/2026-10-30_23-15-02/
     plot.html      the visual, opens on its own in any browser
-    samples.csv    what the view showed: orientation, field and error for each sensor
+    samples.csv    what the view showed: orientation, field and error for each sensor,
+                   and the ICM's position in cm from home
     raw.csv        every sensor reading, offset not removed: the ICM's in the accel/gyro
                    axes, the MMC's in its own axes
     info.json      the calibration in use when the log started
@@ -131,6 +165,7 @@ Run `./earth_cancel.py`, change settings in `config.py`.
 | `config.py` | Every setting |
 | `pair.py` | Runs both magnetometers side by side, with one set of controls |
 | `tracker.py` | The core: readings in, orientation and error out |
+| `locate.py` | The ICM's error in, position out: the coil model, its fit, live tracking |
 | `capture.py` | Averages one reading at a roughly held pose |
 | `gyro_rest.py` | Measures gyro bias whenever the board rests |
 | `tumble.py` | Fits the offset and axis asymmetry from a tumble |
@@ -147,7 +182,7 @@ Run `./earth_cancel.py`, change settings in `config.py`.
 | `log_plot.py` | Draws a log as one `plot.html` |
 | `compare.py` | Scores a log: which magnetometer tracked Earth better |
 | `server.py` | Serves the page, the stream and the buttons |
-| `page/` | The browser view: `sides.js` builds the two panels, `app.js` runs them, `board_view.js`, `sweep_view.js` and `chart.js` draw, `info.js` holds the (i) help text |
+| `page/` | The browser view: `sides.js` builds the two panels, `app.js` runs them, `board_view.js`, `sweep_view.js`, `position_view.js` and `chart.js` draw, `info.js` holds the (i) help text |
 
 Dependencies point one way:
 
@@ -159,6 +194,7 @@ earth_cancel → sensor_loop → imu
              → calibration
              → data_log → log_plot
              → pair
+             → locate → geometry
              → tracker → capture, gyro_rest, tumble, axes_fit, madgwick → geometry
 compare → log_plot
 ```
@@ -175,6 +211,7 @@ without hardware.
 | `earth_cancel_mmc_offset.json` | The same for the MMC |
 | `mmc_mounting.json` | How the MMC sits on the board; Reset calibration keeps it |
 | `earth_cancel_mmc_tumble_log.json` | The MMC's readings and result from the last tumble |
+| `coil_cal.json` | Calibration points and the fitted coil; Clear points deletes them |
 
 ## Tests
 

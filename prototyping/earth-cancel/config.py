@@ -53,6 +53,15 @@ TUMBLE_MIN_SWING_RATIO = 0.8  # ... and the smallest swing at least this share o
                               # a partial turn looks centred, but its swings don't match
 TUMBLE_MAX_FIELD_UT = 100.0   # a field stronger than this isn't Earth's
 
+# position: the coil stays on, and Earth is captured with the board on its home mark
+LOCATE_RANGE_CM = 15.0    # the board works within this of the coil; the page draws this cube
+LOCATE_MIN_POINTS = 4     # calibration points needed before positions appear
+LOCATE_POINT_SAMPLES = 20 # view samples averaged per calibration point, about 1 s
+LOCATE_POINT_MAX_SPREAD_UT = 3.0  # a point whose reading moves more than this wasn't held still
+LOCATE_SEARCH_CM = 30.0   # the coil is looked for within this of home ...
+LOCATE_GRID_CM = 4.0      # ... first on a grid this fine, then exactly
+LOCATE_MAX_MISMATCH_UT = 3.0  # no position if the best one still misses the field by this
+
 # files
 CALIBRATION_FILE = HERE / "earth_cancel_offset.json"
 TUMBLE_LOG_FILE = HERE / "earth_cancel_tumble_log.json"   # last tumble's readings and result
@@ -60,4 +69,5 @@ MMC_CALIBRATION_FILE = HERE / "earth_cancel_mmc_offset.json"
 MMC_TUMBLE_LOG_FILE = HERE / "earth_cancel_mmc_tumble_log.json"
 MMC_MOUNTING_FILE = HERE / "mmc_mounting.json"   # how the chip sits on the board; a fact about
                                                  # the hardware, so Reset calibration keeps it
+COIL_FILE = HERE / "coil_cal.json"   # calibration points and the fitted coil
 LOG_DIR = HERE / "logs"   # each log gets its own folder in here, named by its start time

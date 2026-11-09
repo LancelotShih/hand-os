@@ -146,6 +146,7 @@ function showLog(l) {
 const es = new EventSource("/stream");
 es.onmessage = e => {
   latest = JSON.parse(e.data);
+  positionSample(latest);
   SIDES.forEach(side => {
     const s = sampleOf(side);
     if (s && s.error_ut !== null) side.hist.push({t: performance.now() / 1000, size: s.error_ut, v: s.error});
@@ -155,6 +156,7 @@ es.onmessage = e => {
 es.addEventListener("status", e => {
   state = JSON.parse(e.data);
   showShared();
+  positionState(state);
   SIDES.forEach(showSideState);
 });
 (function frame() {
@@ -169,5 +171,6 @@ es.addEventListener("status", e => {
     }
   });
   drawCharts(HIST_S, state ? state.pass_ut : 5);
+  drawPosition();
   requestAnimationFrame(frame);
 })();

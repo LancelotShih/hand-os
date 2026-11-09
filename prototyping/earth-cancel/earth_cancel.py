@@ -6,6 +6,8 @@ Run with the system python3 (it has smbus2):
   ./earth_cancel.py                # open http://<this-pi's-ip>:8000
 
 First run: rest the board for a second, click "Tumble", follow the steps.
+Position: start with the board on its home mark and the coil on, then add
+calibration points on the page.
 After a log: python3 compare.py logs/<name>
 See README.md for how it works and where everything lives.
 """
@@ -19,6 +21,7 @@ import config
 from calibration import CalibrationFile
 from data_log import DataLog
 from feed import Feed
+from locate import Locator
 from mmc_loop import MmcReader
 from pair import Pair
 from sensor_loop import sensor_loop
@@ -43,7 +46,9 @@ def main(argv=None):
 
     store = CalibrationFile(config.CALIBRATION_FILE, config.TUMBLE_LOG_FILE)
     offset, bias, gains = store.load()
-    tracker = Pair(Tracker(offset, bias, store, gains, use_calibration=config.ICM_USE_CALIBRATION))
+    locator = Locator(config.COIL_FILE)
+    tracker = Pair(Tracker(offset, bias, store, gains, use_calibration=config.ICM_USE_CALIBRATION),
+                   locator=locator)
     if not args.no_mmc:
         mmc_store = CalibrationFile(config.MMC_CALIBRATION_FILE, config.MMC_TUMBLE_LOG_FILE,
                                     config.MMC_MOUNTING_FILE)
@@ -52,7 +57,7 @@ def main(argv=None):
                        Tracker(mmc_offset, bias, mmc_store, mmc_gains, axes=mmc_store.load_axes(),
                                fit_mounting=True, block_samples=config.MMC_BLOCK_SAMPLES,
                                use_calibration=config.MMC_USE_CALIBRATION),
-                       MmcReader(args.bus, args.mmc_address))
+                       MmcReader(args.bus, args.mmc_address), locator)
     feed = Feed()
     log = DataLog(config.LOG_DIR)
     stop = threading.Event()

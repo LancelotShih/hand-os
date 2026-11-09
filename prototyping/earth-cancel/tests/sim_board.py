@@ -1,4 +1,7 @@
-"""A simulated board in a uniform field, stepped at 500 Hz.  No hardware."""
+"""A simulated board in a uniform field, stepped at 500 Hz.  No hardware.
+
+With a ``coil``, the board also sees its field at ``pos`` (cm, in the world axes,
+which are the board's own axes when ``q`` is the identity)."""
 
 import math
 import random
@@ -19,8 +22,10 @@ def axis_quat(axis, deg):
 
 class SimBoard:
     def __init__(self, tracker, gyro_bias=GYRO_BIAS, q=(1.0, 0.0, 0.0, 0.0),
-                 mag_gain=(1.0, 1.0, 1.0)):
+                 mag_gain=(1.0, 1.0, 1.0), coil=None):
         self.tracker = tracker
+        self.coil = coil
+        self.pos = (0.0, 0.0, 0.0)
         self.mag_gain = mag_gain
         self.gyro_bias = gyro_bias
         self.q = q
@@ -38,7 +43,8 @@ class SimBoard:
         gyro = tuple(rate_dps[i] + self.gyro_bias[i] + random.gauss(0, .05) for i in range(3))
         mag = None
         if self._k % 5 == 0:
-            field = quat_rotate(quat_conj(self.q), EARTH)
+            world = EARTH if self.coil is None else add(EARTH, self.coil.field(self.pos))
+            field = quat_rotate(quat_conj(self.q), world)
             field = add(tuple(f * g for f, g in zip(field, self.mag_gain)), OFFSET)
             mag = tuple(v + random.gauss(0, 0.4) for v in field)
         sample = self.tracker.update(accel, gyro, mag, self.t)

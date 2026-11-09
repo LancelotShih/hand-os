@@ -12,7 +12,7 @@
     <h1>Earth Cancel</h1><span class="sp"></span>
     <span id="logstat"></span><a id="loglink" target="_blank"></a>
     <button id="log">Start log</button><button class="info" data-info="log"></button>
-    <button id="capture">Re-capture Earth</button><button class="info" data-info="capture"></button>
+    <button id="capture">Capture at home</button><button class="info" data-info="capture"></button>
     <button id="tumble">Tumble</button><button class="info" data-info="tumble"></button>
     <button id="reset">Reset calibration</button><button class="info" data-info="reset"></button>
   </header>
@@ -37,6 +37,42 @@
       <dt>Gyro bias (&deg;/s) <button class="info" data-info="bias"></button></dt><dd id="bias">&ndash;</dd>
       <dt>Loop gaps <button class="info" data-info="gaps"></button></dt><dd id="gaps">&ndash;</dd>
     </dl>
+  </div>
+  <div class="card" id="poscard">
+    <h2>Position</h2> <span class="hint">ICM, cm from home</span>
+    <div class="posgrid">
+      <div>
+        <canvas id="posview"></canvas>
+        <div class="legend">
+          <span>Drag to rotate, scroll to zoom <button class="info" data-info="posview"></button></span>
+          <button id="posreset">Reset view</button>
+        </div>
+      </div>
+      <div>
+        <div class="big" id="posxyz">&ndash;</div>
+        <dl>
+          <dt>From home <button class="info" data-info="posfrom"></button></dt><dd id="posfromhome">&ndash;</dd>
+          <dt>From the coil's center <button class="info" data-info="poscoil"></button></dt><dd id="posfromcoil">&ndash;</dd>
+          <dt>Precision here <button class="info" data-info="posprecision"></button></dt><dd id="posprec">&ndash;</dd>
+        </dl>
+        <h3>Calibration points <button class="info" data-info="calpoints"></button></h3>
+        <div class="calentry">
+          <label>x <input id="calx" type="number" step="0.5" inputmode="decimal"></label>
+          <label>y <input id="caly" type="number" step="0.5" inputmode="decimal"></label>
+          <label>z <input id="calz" type="number" step="0.5" inputmode="decimal"></label>
+          <span class="hint">cm</span>
+          <button class="primary" id="calcapture">Capture point</button>
+          <button id="calcancel">Cancel</button>
+        </div>
+        <div class="hint" id="calstatus"></div>
+        <table>
+          <thead><tr><th>#</th><th>x</th><th>y</th><th>z</th><th>Off by (mm)<button class="info" data-info="offby"></button></th><th>Left out (mm)<button class="info" data-info="leftout"></button></th><th></th></tr></thead>
+          <tbody id="calrows"></tbody>
+        </table>
+        <p class="hint" id="coilsummary"></p>
+        <button id="calclear">Clear points</button>
+      </div>
+    </div>
   </div>
   <div id="sides"></div>
 </main>
@@ -93,6 +129,7 @@
 <script src="board_view.js"></script>
 <script src="sweep_view.js"></script>
 <script src="chart.js"></script>
+<script src="position_view.js"></script>
 <script src="app.js"></script>
 <script src="info.js"></script>
 </body>

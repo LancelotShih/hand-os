@@ -47,8 +47,8 @@ function rot(q, v) {
   return [v[0]+w*t[0]+y*t[2]-z*t[1], v[1]+w*t[1]+z*t[0]-x*t[2], v[2]+w*t[2]+x*t[1]-y*t[0]];
 }
 
-function cam(p) {
-  const a = camera.yaw * Math.PI / 180, e = camera.pitch * Math.PI / 180;
+function cam(p, c = camera) {
+  const a = c.yaw * Math.PI / 180, e = c.pitch * Math.PI / 180;
   const x = p[0]*Math.cos(a) - p[1]*Math.sin(a), y = p[0]*Math.sin(a) + p[1]*Math.cos(a);
   return [x, y*Math.sin(e) + p[2]*Math.cos(e), y*Math.cos(e) - p[2]*Math.sin(e)];
 }

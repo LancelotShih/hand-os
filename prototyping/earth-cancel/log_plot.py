@@ -23,11 +23,13 @@ SAMPLE_COLUMNS = ["t_s", "qw", "qx", "qy", "qz", "yaw_deg", "pitch_deg", "roll_d
                   "mmc_measured_x_ut", "mmc_measured_y_ut", "mmc_measured_z_ut",
                   "mmc_predicted_x_ut", "mmc_predicted_y_ut", "mmc_predicted_z_ut",
                   "mmc_error_x_ut", "mmc_error_y_ut", "mmc_error_z_ut",
-                  "mmc_error_ut", "mmc_error_deg", "calibration_on", "mmc_calibration_on"]
+                  "mmc_error_ut", "mmc_error_deg", "calibration_on", "mmc_calibration_on",
+                  "pos_x_cm", "pos_y_cm", "pos_z_cm"]
 
 MAX_BUCKETS = 1500        # thinning: at most two points per bucket
 MAX_GAP_S = 1.0           # a longer gap in the data breaks the line
 NICE_TOPS = (10, 20, 50, 100, 200, 500, 1000, 2000, 5000)
+POSITION_TOPS = (5, 10, 15, 20, 30, 50)   # cm
 
 WIDTH, LEFT, RIGHT = 900, 52, 14
 PLOT_H, HEADER_H, AXIS_H = 96, 26, 24
@@ -136,8 +138,14 @@ def _traces(c):
     for axis in "xyz":
         traces += [(f"{label}error {axis}" if label else f"Error {axis}", "µT",
                     thin(ts, c[f"{p}error_{axis}_ut"]), -top, top, ()) for label, p in sides]
-    return traces + [("Turned from capture", "°", thin(ts, c["turn_deg"]), 0.0, 180.0,
-                      (PASS_MIN_TURN_DEG,))]
+    traces.append(("Turned from capture", "°", thin(ts, c["turn_deg"]), 0.0, 180.0,
+                   (PASS_MIN_TURN_DEG,)))
+    if any(v is not None for v in c.get("pos_x_cm", ())):
+        far = max(abs(v) for k in ("pos_x_cm", "pos_y_cm", "pos_z_cm") for v in c[k] if v is not None)
+        span = next((top for top in POSITION_TOPS if top >= far), far)
+        traces += [(f"Position {axis}, from home", "cm", thin(ts, c[f"pos_{axis}_cm"]), -span, span, ())
+                   for axis in "xyz"]
+    return traces
 
 
 def _tile(label, value):

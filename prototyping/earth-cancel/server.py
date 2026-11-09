@@ -17,6 +17,7 @@ PAGE_FILES = {
     "/board_view.js": ("board_view.js", "text/javascript; charset=utf-8"),
     "/sweep_view.js": ("sweep_view.js", "text/javascript; charset=utf-8"),
     "/chart.js": ("chart.js", "text/javascript; charset=utf-8"),
+    "/position_view.js": ("position_view.js", "text/javascript; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/info.js": ("info.js", "text/javascript; charset=utf-8"),
 }
@@ -59,8 +60,38 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _body(self):
+        """The JSON a button sent, or ``{}``."""
+        size = int(self.headers.get("Content-Length") or 0)
+        if not size:
+            return {}
+        try:
+            body = json.loads(self.rfile.read(size))
+        except ValueError:
+            raise ValueError("couldn't read what the page sent")
+        return body if isinstance(body, dict) else {}
+
+    def _locate_routes(self):
+        loc = getattr(self.server.tracker, "locator", None)
+        if loc is None:
+            return {}
+        return {"/locate/point": lambda b: loc.capture_point(
+                    [b.get("x"), b.get("y"), b.get("z")] if all(k in b for k in "xyz") else []),
+                "/locate/cancel": lambda b: loc.cancel_capture(),
+                "/locate/remove": lambda b: loc.remove_point(int(b.get("index", -1))),
+                "/locate/clear": lambda b: loc.clear_points()}
+
     def do_POST(self):
         t, log = self.server.tracker, self.server.log
+        with_body = self._locate_routes().get(self.path)
+        if with_body is not None:
+            try:
+                with_body(self._body())
+                body = {"ok": True}
+            except (ValueError, TypeError) as e:
+                body = {"ok": False, "error": str(e)}
+            self._send(json.dumps(body).encode(), "application/json")
+            return
         fn = {"/capture": t.capture_earth,
               "/calibration/icm/toggle": lambda: t.toggle_calibration("icm"),
               "/calibration/mmc/toggle": lambda: t.toggle_calibration("mmc"),

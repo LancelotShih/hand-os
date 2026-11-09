@@ -183,4 +183,4 @@ class Plot(unittest.TestCase):
             for name in SAMPLE_COLUMNS:
                 c[name].append(1.0)
             c["t_s"][-1] = t
-        self.assertEqual(render("x", c).count('class="trace"'), 22)     # 11 plots, two sensors
+        self.assertEqual(render("x", c).count('class="trace"'), 28)     # 11 plots, two sensors, 3 positions

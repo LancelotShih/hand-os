@@ -5,12 +5,13 @@ accelerometer readings, so they hold the same orientation.  Any error from turni
 is then shared: a difference between them is a difference between the magnetometers.
 
 Has the Tracker's control methods, so the server doesn't care which it's given.
+A ``Locator``, if given, turns the ICM's error into a position on every sample.
 """
 
 
 class Pair:
-    def __init__(self, icm, mmc=None, reader=None):
-        self.icm, self.mmc, self.reader = icm, mmc, reader
+    def __init__(self, icm, mmc=None, reader=None, locator=None):
+        self.icm, self.mmc, self.reader, self.locator = icm, mmc, reader, locator
         self.reading = None                   # this step's fresh MMC reading, for the log
         self._last = None                     # newest MMC view sample
 
@@ -31,6 +32,8 @@ class Pair:
         sample = self.icm.update(accel, gyro, mag, now)
         if sample is not None:
             sample["mmc"] = self._last if self._mmc_on else None
+            if self.locator is not None:
+                sample["locate"] = self.locator.update(sample)
         return sample
 
     def capture_earth(self):
@@ -84,6 +87,7 @@ class Pair:
         """The ICM's status with ``mmc`` beside it in the same shape, and
         ``finish_ready`` for both together."""
         out = self.icm.status()
+        out["locate"] = self.locator.status() if self.locator is not None else None
         if self.mmc is None:
             return {**out, "mmc": None, "finish_ready": out["tumble_ready"]}
         mmc = self.mmc.status()

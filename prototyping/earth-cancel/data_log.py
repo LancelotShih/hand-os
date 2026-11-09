@@ -2,7 +2,7 @@
 
     logs/2026-10-30_23-15-02/
         raw.csv        every sensor reading, both magnetometers as they came
-        samples.csv    what the view showed: orientation, field, error
+        samples.csv    what the view showed: orientation, field, error, position
         info.json      the calibration in use
         plot.html      the visual, written when the log stops
 """
@@ -27,12 +27,14 @@ def _cells(values):
 
 def _sample_row(t, s):
     m = s.get("mmc") or {}
+    position = (s.get("locate") or {}).get("position")
     return _cells([t, *s["quat"], *s["euler"], s["turn"], *s["measured"],
                    *(s["predicted"] or [None] * 3), *(s["error"] or [None] * 3), s["error_ut"],
                    s.get("error_deg"), *(m.get("measured") or [None] * 3),
                    *(m.get("predicted") or [None] * 3), *(m.get("error") or [None] * 3),
                    m.get("error_ut"), m.get("error_deg"),
-                   s.get("calibration_on"), m.get("calibration_on")])
+                   s.get("calibration_on"), m.get("calibration_on"),
+                   *(position or [None] * 3)])
 
 
 class DataLog:
