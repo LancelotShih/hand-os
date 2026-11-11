@@ -160,21 +160,53 @@ finishes it. To redraw a plot: `python3 -m magtrack_src.recording.log_plot data/
 
 Settings are all in `magtrack_src/config.py`. The code is split by job:
 
-| Folder | Its job |
-|---|---|
-| `earth_cancel.py` | Starts everything and wires it together |
-| `magtrack_src/hardware/` | Talks to the two chips |
-| `magtrack_src/geometry/` | Vector and turn math |
-| `magtrack_src/orientation/` | How the board is turned, from the gyro and accelerometer |
-| `magtrack_src/calibration/` | Tumble, mounting, and saving them |
-| `magtrack_src/tracking/` | Readings in, Earth cancelled, error out |
-| `magtrack_src/position/` | The coil model and the position |
-| `magtrack_src/web/` | The server and the page |
-| `magtrack_src/recording/` | Logs, plots and scoring |
-| `data/` | Everything the program saves: calibrations and logs |
+```
+cancel-tracking/
+├── earth_cancel.py            starts everything and wires it together
+├── README.md                  this file
+├── CLAUDE.md                  the map for AI agents
+├── magtrack_src/
+│   ├── config.py              every setting and file path
+│   ├── hardware/              talks to the two chips
+│   │   ├── icm20948.py        the ICM-20948 and its magnetometer
+│   │   ├── mmc5983.py         the MMC5983MA
+│   │   ├── icm_loop.py        reads the ICM forever, reconnects if it drops
+│   │   └── mmc_loop.py        reads the MMC forever, on its own thread
+│   ├── geometry/
+│   │   └── vectors.py         vector and turn math
+│   ├── orientation/           how the board is turned, from the gyro and accelerometer
+│   │   ├── madgwick.py        the orientation filter
+│   │   └── gyro_bias.py       measures the gyro bias whenever the board rests
+│   ├── calibration/           measured once and saved
+│   │   ├── tumble.py          each axis's midpoint and stretch, from a tumble
+│   │   ├── mounting.py        how a magnetometer sits on the board
+│   │   └── store.py           saves and loads them
+│   ├── tracking/              readings in, Earth cancelled, error out
+│   │   ├── tracker.py         one magnetometer's whole pipeline
+│   │   ├── earth_capture.py   averages one reading of Earth at a held pose
+│   │   └── pair.py            runs the ICM and MMC side by side
+│   ├── position/
+│   │   └── locate.py          the coil model, its fit, and the live position
+│   ├── web/                   the server and the page
+│   │   ├── server.py          serves the page, the stream and the buttons
+│   │   ├── feed.py            passes samples from the sensor thread to the page
+│   │   └── page/              index.html, style.css and the page's scripts
+│   └── recording/             logs, plots and scoring
+│       ├── data_log.py        records a run to its own folder
+│       ├── log_plot.py        draws a log as one plot.html
+│       └── compare.py         scores a log: which magnetometer did better
+├── tests/                     python3 -m unittest, no hardware needed
+│   ├── sim/sim_board.py       a simulated board
+│   └── test_*.py
+├── data/                      everything the program saves
+│   ├── calibration/           the calibration files (see Files it writes)
+│   └── logs/                  one folder per log
+└── docs/
+    ├── architecture.md        how a reading flows through it all
+    └── critique-2026-11-03.md known weak points and open questions
+```
 
-Each folder has a short README. `docs/architecture.md` explains how a reading flows
-through it all, and `CLAUDE.md` is the map for AI agents.
+Each folder in `magtrack_src/` has a short README saying what's in it and what uses it.
 
 ## Files it writes
 
