@@ -1,7 +1,0 @@
-__pycache__/
-logs/
-earth_cancel_offset.json
-earth_cancel_tumble_log.json
-earth_cancel_mmc_offset.json
-earth_cancel_mmc_tumble_log.json
-coil_cal.json
