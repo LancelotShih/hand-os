@@ -2,6 +2,8 @@
 
 The board needn't be still.  A wobble averages out over the window, and the
 pose from the middle of the window matches the averaged reading.
+
+Used by: tracking/tracker.py.  Uses: geometry, config.
 """
 
 from magtrack_src.config import CAPTURE_MAX_TURN_DEG, CAPTURE_MIN_MAG, CAPTURE_S

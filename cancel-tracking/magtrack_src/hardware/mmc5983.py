@@ -3,6 +3,8 @@
 Each reading is a SET/RESET pair: the field flips sign in the sensor between the
 two and the sensor's own drift doesn't, so half their difference is the field
 alone, whatever the temperature.
+
+Used by: hardware/mmc_loop.py.  Uses: smbus2, config.
 """
 
 import time

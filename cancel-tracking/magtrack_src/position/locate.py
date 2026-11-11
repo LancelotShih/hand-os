@@ -21,6 +21,8 @@ from the last one.  A bar magnet's field is the same at ``p`` and at its mirror
 through the center, so the track's continuity picks the side.
 
 Units: cm and uT.  ``s`` is strength times axis, in uT*cm^2.
+
+Used by: tracking/pair.py (Locator.update), web/server.py (point routes), earth_cancel.py.  Uses: geometry, config.
 """
 
 import json

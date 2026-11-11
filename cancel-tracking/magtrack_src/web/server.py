@@ -1,4 +1,7 @@
-"""The web side: serves the page, streams samples, takes button clicks."""
+"""The web side: serves the page, streams samples, takes button clicks.
+
+Used by: earth_cancel.py.  Uses: config, and the Pair, Feed and DataLog it's given; serves web/page/.
+"""
 
 import json
 import re

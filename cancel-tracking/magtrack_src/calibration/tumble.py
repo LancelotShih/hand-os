@@ -5,6 +5,8 @@ on a sphere around zero.  The offset moves that sphere's centre and unequal axis
 sensitivity stretches it into an ellipsoid.  Fitting the shape measures both,
 from the magnetometer alone: no orientation is involved, so gyro error can't
 affect it.
+
+Used by: tracking/tracker.py.  Uses: geometry, config.
 """
 
 import math

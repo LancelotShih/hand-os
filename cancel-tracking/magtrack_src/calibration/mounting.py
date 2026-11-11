@@ -12,6 +12,8 @@ Turning can't tell ``axes`` from ``-axes``: a reading that's exactly backwards a
 stays constant.  Tracking is the same either way, because Earth is captured through
 the same ``axes`` and only ever compared with itself, so the fit picks the one that
 isn't mirrored.  That means its Earth can point opposite to another sensor's.
+
+Used by: tracking/tracker.py (after a tumble).  Uses: geometry.
 """
 
 import itertools

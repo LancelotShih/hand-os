@@ -1,4 +1,4 @@
-# earth-cancel
+# cancel-tracking
 
 Cancels Earth's field at every angle on an ICM-20948, from one measurement, and
 compares its magnetometer (AK09916) with an MMC5983MA doing the same job at the
@@ -25,13 +25,13 @@ still. A tumble's results are kept while the switch is off.
 
 The MMC cancels Earth with no calibration: at startup it measures Earth once, and
 the gyro and accelerometer then predict Earth at every angle. It needs one tumble
-ever, to measure how the chip sits on the board. That goes in `mmc_mounting.json`,
+ever, to measure how the chip sits on the board. That goes in `data/calibration/mmc_mounting.json`,
 which **Reset calibration** keeps, and later tumbles refresh it. If the sensor is
 remounted, tumble again. Hold the board away from magnets at startup, and click
 **Capture at home** to clear yaw drift.
 
 The starting positions are `ICM_USE_CALIBRATION` and `MMC_USE_CALIBRATION` in
-`config.py`; the switches aren't saved between runs.
+`magtrack_src/config.py`; the switches aren't saved between runs.
 
 ## Comparing the two magnetometers
 
@@ -47,7 +47,7 @@ shared and a difference between them is a difference between the sensors.
 3. Score it:
 
 ```bash
-python3 compare.py logs/<name>
+python3 -m magtrack_src.recording.compare data/logs/<name>
 ```
 
 The page shows the two sensors as identical panels, built from one template:
@@ -79,6 +79,7 @@ reader keeps trying to reconnect.
 ## Use
 
 ```bash
+cd cancel-tracking
 ./earth_cancel.py     # open http://<this-pi's-ip>:8000
 ```
 
@@ -102,7 +103,7 @@ from fresh readings and replaces it, nothing carries over. **Reset calibration**
 erases it all, so the next run starts from nothing. Recorded logs and the MMC's
 mounting are kept.
 
-The limit is `PASS_UT` in `config.py`. It sets every green and red on the page.
+The limit is `PASS_UT` in `magtrack_src/config.py`. It sets every green and red on the page.
 
 ## Position
 
@@ -131,7 +132,7 @@ shows how much the position can move per µT of field error. At 13 cm it's about
 1 mm per µT within 50° of the coil's axis, 2.8 at 70°, and unusable at 90°. With
 the coil broadside to home, home itself is at 90°.
 
-The points and the fitted coil are saved in `coil_cal.json` and loaded on the next
+The points and the fitted coil are saved in `data/calibration/coil_cal.json` and loaded on the next
 launch. They hold only while home stays in the same spot: if the tape moves, click
 **Clear points** and capture new ones. Tumble with the coil off or far away: it
 needs the chip to see Earth alone.
@@ -142,7 +143,7 @@ Click **Start log**, then **Stop log**. A link to the plot appears next to the
 button. Each log gets its own folder named by its start time:
 
 ```
-logs/2026-10-30_23-15-02/
+data/logs/2026-10-30_23-15-02/
     plot.html      the visual, opens on its own in any browser
     samples.csv    what the view showed: orientation, field and error for each sensor,
                    and the ICM's position in cm from home
@@ -153,70 +154,43 @@ logs/2026-10-30_23-15-02/
 
 Times are seconds from the start of the log. Blank cells mean no value yet: no
 fresh magnetometer sample, or no Earth reference. Ctrl+C during a log still
-finishes it. To redraw a plot: `python3 log_plot.py logs/<name>`.
+finishes it. To redraw a plot: `python3 -m magtrack_src.recording.log_plot data/logs/<name>`.
 
-## Layout
+## Code layout
 
-Run `./earth_cancel.py`, change settings in `config.py`.
+Settings are all in `magtrack_src/config.py`. The code is split by job:
 
-| File | Its one job |
+| Folder | Its job |
 |---|---|
 | `earth_cancel.py` | Starts everything and wires it together |
-| `config.py` | Every setting |
-| `pair.py` | Runs both magnetometers side by side, with one set of controls |
-| `tracker.py` | The core: readings in, orientation and error out |
-| `locate.py` | The ICM's error in, position out: the coil model, its fit, live tracking |
-| `capture.py` | Averages one reading at a roughly held pose |
-| `gyro_rest.py` | Measures gyro bias whenever the board rests |
-| `tumble.py` | Fits the offset and axis asymmetry from a tumble |
-| `axes_fit.py` | Measures how a magnetometer is mounted, from a tumble |
-| `madgwick.py` | Orientation filter (gyro + accelerometer) |
-| `geometry.py` | Vector and quaternion math |
-| `imu.py` | Talks to the sensor, gives readings in one set of axes |
-| `mmc5983.py` | Talks to the MMC5983MA: one field reading from a SET/RESET pair |
-| `sensor_loop.py` | Reads the sensor forever, reconnects if it drops |
-| `mmc_loop.py` | Reads the MMC5983MA forever on its own thread |
-| `calibration.py` | Saves and loads what the tumble measured |
-| `feed.py` | Passes samples from the sensor thread to the browser |
-| `data_log.py` | Records a run to its own time-stamped folder |
-| `log_plot.py` | Draws a log as one `plot.html` |
-| `compare.py` | Scores a log: which magnetometer tracked Earth better |
-| `server.py` | Serves the page, the stream and the buttons |
-| `page/` | The browser view: `sides.js` builds the two panels, `app.js` runs them, `board_view.js`, `sweep_view.js`, `position_view.js` and `chart.js` draw, `info.js` holds the (i) help text |
+| `magtrack_src/hardware/` | Talks to the two chips |
+| `magtrack_src/geometry/` | Vector and turn math |
+| `magtrack_src/orientation/` | How the board is turned, from the gyro and accelerometer |
+| `magtrack_src/calibration/` | Tumble, mounting, and saving them |
+| `magtrack_src/tracking/` | Readings in, Earth cancelled, error out |
+| `magtrack_src/position/` | The coil model and the position |
+| `magtrack_src/web/` | The server and the page |
+| `magtrack_src/recording/` | Logs, plots and scoring |
+| `data/` | Everything the program saves: calibrations and logs |
 
-Dependencies point one way:
-
-```
-earth_cancel → sensor_loop → imu
-             → mmc_loop → mmc5983
-             → server
-             → feed
-             → calibration
-             → data_log → log_plot
-             → pair
-             → locate → geometry
-             → tracker → capture, gyro_rest, tumble, axes_fit, madgwick → geometry
-compare → log_plot
-```
-
-`tracker.py` knows nothing about I2C or the web, so all of it can be tested
-without hardware.
+Each folder has a short README. `docs/architecture.md` explains how a reading flows
+through it all, and `CLAUDE.md` is the map for AI agents.
 
 ## Files it writes
 
 | File | Holds |
 |---|---|
-| `earth_cancel_offset.json` | The offset, axis gains and gyro bias in use |
-| `earth_cancel_tumble_log.json` | Readings and result of the last tumble |
-| `earth_cancel_mmc_offset.json` | The same for the MMC |
-| `mmc_mounting.json` | How the MMC sits on the board; Reset calibration keeps it |
-| `earth_cancel_mmc_tumble_log.json` | The MMC's readings and result from the last tumble |
-| `coil_cal.json` | Calibration points and the fitted coil; Clear points deletes them |
+| `data/calibration/earth_cancel_offset.json` | The offset, axis gains and gyro bias in use |
+| `data/calibration/earth_cancel_tumble_log.json` | Readings and result of the last tumble |
+| `data/calibration/earth_cancel_mmc_offset.json` | The same for the MMC |
+| `data/calibration/mmc_mounting.json` | How the MMC sits on the board; Reset calibration keeps it |
+| `data/calibration/earth_cancel_mmc_tumble_log.json` | The MMC's readings and result from the last tumble |
+| `data/calibration/coil_cal.json` | Calibration points and the fitted coil; Clear points deletes them |
 
 ## Tests
 
 ```bash
-python3 -m unittest     # from this folder, no hardware needed
+python3 -m unittest     # from cancel-tracking/, no hardware needed
 ```
 
 The tests simulate the board, so they can't catch a wrong assumption the

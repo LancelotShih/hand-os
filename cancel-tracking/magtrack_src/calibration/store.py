@@ -1,4 +1,7 @@
-"""What the calibrations save to disk."""
+"""What the calibrations save to disk.
+
+Used by: earth_cancel.py (load), tracking/tracker.py (save).  Uses: nothing.
+"""
 
 import json
 from pathlib import Path

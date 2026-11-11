@@ -2,6 +2,8 @@
 
 Its own thread because a reading takes milliseconds of waiting, and the IMU loop
 must not wait with it.  The kernel keeps the two threads' bus traffic apart.
+
+Used by: earth_cancel.py, tracking/pair.py (take).  Uses: hardware/mmc5983.py.
 """
 
 import sys

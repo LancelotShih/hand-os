@@ -1,4 +1,7 @@
-"""Vector and quaternion math.  Vectors are 3-tuples, quaternions (w, x, y, z)."""
+"""Vector and quaternion math.  Vectors are 3-tuples, quaternions (w, x, y, z).
+
+Used by: orientation, calibration, tracking, position.  Uses: nothing.
+"""
 
 import math
 

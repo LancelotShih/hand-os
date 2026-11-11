@@ -5,6 +5,8 @@ are thinned so the file stays small, keeping each stretch's highest and lowest
 points so a spike can't disappear.
 
 To redraw a log:  python3 -m magtrack_src.recording.log_plot data/logs/<name>
+
+Used by: recording/data_log.py, recording/compare.py.  Uses: config.
 """
 
 import csv

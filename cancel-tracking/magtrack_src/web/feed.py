@@ -1,4 +1,7 @@
-"""Hands samples from the sensor thread to the browser tabs."""
+"""Hands samples from the sensor thread to the browser tabs.
+
+Used by: hardware/icm_loop.py (push), web/server.py (since).  Uses: nothing.
+"""
 
 import threading
 from collections import deque

@@ -1,6 +1,9 @@
 """Reads the IMU forever, reconnecting if it drops out.
 
-``tracker`` is a ``Pair``, which collects the MMC5983MA's newest reading itself."""
+``tracker`` is a ``Pair``, which collects the MMC5983MA's newest reading itself.
+
+Used by: earth_cancel.py.  Uses: hardware/icm20948.py; calls the tracker (a Pair), DataLog and Feed it's given.
+"""
 
 import sys
 import time

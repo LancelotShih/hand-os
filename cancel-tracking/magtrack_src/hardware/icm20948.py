@@ -1,4 +1,7 @@
-"""The ICM-20948 and its AK09916 magnetometer, over I2C.  Needs smbus2."""
+"""The ICM-20948 and its AK09916 magnetometer, over I2C.  Needs smbus2.
+
+Used by: hardware/icm_loop.py.  Uses: smbus2.
+"""
 
 import time
 

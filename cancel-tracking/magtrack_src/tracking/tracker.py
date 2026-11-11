@@ -2,6 +2,8 @@
 
 Knows nothing about I2C or the web.  ``update`` runs in the sensor loop; the
 other methods are safe to call from the HTTP threads.
+
+Used by: tracking/pair.py, earth_cancel.py.  Uses: orientation, calibration, tracking/earth_capture.py, geometry, config.
 """
 
 import math

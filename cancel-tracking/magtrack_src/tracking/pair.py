@@ -6,6 +6,8 @@ is then shared: a difference between them is a difference between the magnetomet
 
 Has the Tracker's control methods, so the server doesn't care which it's given.
 A ``Locator``, if given, turns the ICM's error into a position on every sample.
+
+Used by: earth_cancel.py, hardware/icm_loop.py, web/server.py.  Uses: the Trackers, MmcReader and Locator it's given.
 """
 
 

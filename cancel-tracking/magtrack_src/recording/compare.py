@@ -6,6 +6,8 @@ Log after a Tumble, with the board turning through large angles for a while and
 resting for a few seconds at the end or in the middle.  Only stretches turned
 at least PASS_MIN_TURN_DEG from the capture count: near the capture both are
 right by construction.
+
+Used by: you, from the command line.  Uses: recording/log_plot.py, config.
 """
 
 import csv

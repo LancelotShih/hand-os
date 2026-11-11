@@ -1,4 +1,7 @@
-"""Every setting in one place.  Adjust freely."""
+"""Every setting in one place.  Adjust freely.
+
+Read by every package; nothing else lives here.
+"""
 
 from pathlib import Path
 

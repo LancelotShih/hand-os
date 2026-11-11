@@ -1,4 +1,7 @@
-"""Madgwick orientation filter, gyro + accelerometer only."""
+"""Madgwick orientation filter, gyro + accelerometer only.
+
+Used by: tracking/tracker.py.  Uses: geometry, config.
+"""
 
 import math
 

@@ -1,4 +1,7 @@
-"""Measures the gyro's bias whenever the board happens to rest."""
+"""Measures the gyro's bias whenever the board happens to rest.
+
+Used by: tracking/tracker.py.  Uses: geometry, config.
+"""
 
 from magtrack_src.config import REST_MAX_BIAS_DPS, REST_S, REST_SPREAD_DPS
 from magtrack_src.geometry.vectors import add

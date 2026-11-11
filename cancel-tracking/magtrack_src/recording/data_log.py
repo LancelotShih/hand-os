@@ -5,6 +5,8 @@
         samples.csv    what the view showed: orientation, field, error, position
         info.json      the calibration in use
         plot.html      the visual, written when the log stops
+
+Used by: earth_cancel.py, hardware/icm_loop.py, web/server.py.  Uses: recording/log_plot.py.
 """
 
 import csv
