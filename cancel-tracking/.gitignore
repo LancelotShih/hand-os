@@ -1,0 +1,8 @@
+__pycache__/
+.lgd-nfy*
+
+# everything the program writes, except how the MMC sits on the board,
+# which is a fact about the hardware
+data/logs/
+data/calibration/*
+!data/calibration/mmc_mounting.json
