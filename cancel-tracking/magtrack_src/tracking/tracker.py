@@ -13,8 +13,8 @@ from collections import deque
 from magtrack_src.tracking.earth_capture import Capture
 from magtrack_src.calibration.mounting import fit_axes
 from magtrack_src.config import BLOCK_SAMPLES, HISTORY_S, MAG_LATENCY_S, MAX_GAP_S, RATE_WINDOW_S
-from magtrack_src.geometry.vectors import (angle_deg, mat_vec, norm, quat_angle_deg, quat_conj, quat_from_gravity,
-                      quat_mul, quat_norm, quat_rotate, quat_to_euler, sub)
+from magtrack_src.geometry.vectors import (angle_deg, mat_vec, norm, quat_angle_deg, quat_between, quat_conj,
+                      quat_from_gravity, quat_mul, quat_norm, quat_rotate, quat_to_euler, sub)
 from magtrack_src.orientation.gyro_bias import GyroRest
 from magtrack_src.orientation.madgwick import madgwick_step
 from magtrack_src.calibration.tumble import Tumble, fit_tumble
@@ -45,6 +45,7 @@ class Tracker:
         self._rate_count = 0
         self._store = store                       # CalibrationFile, or None to save nothing
         self._q = None
+        self._retilt = False                      # True after a reconnect: take tilt fresh, keep heading
         self._last_t = None
         self._q_ref = None
         self._t_ref = None
@@ -78,6 +79,12 @@ class Tracker:
                 mag = tuple(m * g for m, g in zip(mag, self._gains_now))
             if self._q is None:
                 self._q = quat_from_gravity(accel)
+            elif self._retilt:
+                # back from a gap: keep the heading from before, and turn the board the
+                # least that puts "up" where the accelerometer now says it is
+                up_was = quat_rotate(quat_conj(self._q), (0.0, 0.0, 1.0))
+                self._q = quat_norm(quat_mul(self._q, quat_between(accel, up_was)))
+                self._retilt = False
             dt = 0.0 if self._last_t is None else now - self._last_t
             self._last_t = now
             if dt > MAX_GAP_S:
@@ -253,14 +260,22 @@ class Tracker:
                     self.message = f"Couldn't delete the saved calibration: {e}"
 
     def sensor_lost(self):
-        """The board may have moved unseen: orientation can't be trusted, so
-        start over."""
+        """Back after a gap with no readings.  Earth's capture is kept, so home is
+        too: capturing again wherever the board happens to be would quietly move
+        it.  Tilt comes fresh from the accelerometer on the next reading.  Heading
+        can't be measured (the coil spoils the magnetometer for it), so it's
+        assumed unchanged; if the board turned in the gap, a capture at home fixes it."""
         with self._lock:
-            self._q = self._last_t = self._q_ref = self._t_ref = self.earth = None
-            self._hist.clear()
+            self._last_t = None                   # no gyro across the gap, and not a loop gap
+            self._hist.clear()                    # orientations from before the gap
             self._block = []
-            self.message = "sensor reconnected: captured again from the current pose"
-            self._capture = Capture()
+            self._retilt = self._q is not None
+            if self._capture is not None:         # a capture cut off by the gap starts over
+                self._capture = Capture()
+            self.message = ("Sensor reconnected. Kept the capture and the heading from before; tilt is "
+                            "fresh from the accelerometer. If the board turned while disconnected, put it "
+                            "on the sensor home and click Capture at sensor home."
+                            if self.earth is not None else "Sensor reconnected.")
 
     def _tumble_now(self):
         now = self._tumble.now if self._tumble else None

@@ -72,7 +72,7 @@ plus `connected`/`error`) and `locate` (`Locator.status()`). `server.py` adds
 | board | ICM-20948 accel/gyro axes, as silk-screened | `icm20948.mag_to_body` maps the AK09916 in. The MMC goes through `Tracker.axes`, which the tumble fits (`calibration/mounting.py`) |
 | level | Gravity on +z, heading arbitrary | Madgwick's world frame (`quat_from_gravity` at start) |
 | reference | The board's pose at the last Earth capture | `Tracker._q_ref`. `quat` in samples is board → reference |
-| home | Reference axes captured on the home tape mark, origin at the mark | Positions, in cm |
+| home | Reference axes captured on the home tape mark, origin at the coil's center. Home itself is a point the user enters | Positions, in cm |
 
 ## Calibrations
 
@@ -98,8 +98,10 @@ plus `connected`/`error`) and `locate` (`Locator.status()`). `server.py` adds
 
 Every shared object guards its state with its own `threading.Lock`. Fits run outside
 the lock (`Tracker.tumble_finish`, `Locator._fit`) so the sensor loop never waits on
-them. If the ICM drops out, the loop reconnects and calls `Pair.sensor_lost()`, which
-discards orientation and takes a new capture.
+them. If the ICM drops out, the loop reconnects and calls `Pair.sensor_lost()`. That keeps
+Earth's capture (so home stays put) and the heading from before the gap, and takes
+tilt fresh from the accelerometer on the next reading. Heading can't be measured, so
+a turn made while disconnected shows up as error until the next capture at home.
 
 ## Files written at runtime
 

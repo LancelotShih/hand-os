@@ -58,13 +58,14 @@ TUMBLE_MIN_SWING_RATIO = 0.8  # ... and the smallest swing at least this share o
                               # a partial turn looks centred, but its swings don't match
 TUMBLE_MAX_FIELD_UT = 100.0   # a field stronger than this isn't Earth's
 
-# position: the coil stays on, and Earth is captured with the board on its home mark
+# position: the coil stays on, and Earth is captured with the board on its home mark.
+# Positions are cm from the coil's center (0), in the ICM's axes as it sat at home.
 LOCATE_RANGE_CM = 15.0    # the board works within this of the coil; the page draws this cube
 LOCATE_MIN_POINTS = 4     # calibration points needed before positions appear
 LOCATE_POINT_SAMPLES = 20 # view samples averaged per calibration point, about 1 s
 LOCATE_POINT_MAX_SPREAD_UT = 3.0  # a point whose reading moves more than this wasn't held still
-LOCATE_SEARCH_CM = 30.0   # the coil is looked for within this of home ...
-LOCATE_GRID_CM = 4.0      # ... first on a grid this fine, then exactly
+LOCATE_CENTER_SLACK_CM = 4.0  # the fitted coil's center may sit at most this far from 0, in cm ...
+LOCATE_CENTER_GRID_CM = 2.0   # ... looked for first on a grid this fine, then exactly
 LOCATE_MAX_MISMATCH_UT = 3.0  # no position if the best one still misses the field by this
 
 # files

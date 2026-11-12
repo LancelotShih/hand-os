@@ -10,7 +10,7 @@ Run with the system `python3` on the Pi (stdlib + `smbus2`, no numpy).
 
 ```bash
 ./earth_cancel.py                                        # web page on http://<pi>:8000
-python3 -m unittest                                      # 112 tests, ~65 s, no hardware
+python3 -m unittest                                      # 119 tests, ~65 s, no hardware
 python3 -m magtrack_src.recording.compare data/logs/<name>     # score a log
 python3 -m magtrack_src.recording.log_plot data/logs/<name>    # redraw a log's plot.html
 ```
@@ -69,8 +69,8 @@ only place that wires layers together. Imports are absolute: `from magtrack_src.
 - **Units:** µT, cm, °/s (gyro, converted to rad/s only inside Madgwick), g, and
   seconds from `time.monotonic()`. Quaternions are `(w, x, y, z)`, vectors are 3-tuples.
 - **Frames:** chip axes → board axes (accel/gyro) → reference axes (the board's
-  pose at the last Earth capture). Positions are cm from *home*, in the board's axes
-  as it sat at home. See `docs/architecture.md`.
+  pose at the last Earth capture). Positions are cm from the coil's center (0), in the
+  board's axes as it sat at home. *Home* is a position the user enters, from the coil. See `docs/architecture.md`.
 - **The coil is always on and not driven by the Pi.** Earth is captured at home
   with the coil on, so "error" = coil field here − coil field at home.
 - **Heading can drift.** Only the gyro holds heading (the coil spoils the

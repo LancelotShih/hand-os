@@ -1,6 +1,7 @@
-// The Position card: where the ICM is, drawn in 3-D around the coil, plus the
-// calibration points.  Positions are cm from home, in the ICM's own axes as it
-// sat at home.  Drag to orbit, scroll to zoom, double-click to reset.
+// The Position card: where the ICM is, drawn in 3-D around the coil, plus home
+// and the calibration points.  Positions are cm from the coil's center (0), in
+// the ICM's own axes as it sat at home.  Drag to orbit, scroll to zoom,
+// double-click to reset.
 const POS_VIEW_START = {yaw: -35, pitch: 25, zoom: 1};
 const TRAIL_S = 4;
 const posCamera = {...POS_VIEW_START};
@@ -29,11 +30,13 @@ let posLatest = null, posState = null, posDrag = null;
   const send = (path, body) => fetch(path, {method: "POST", headers: {"Content-Type": "application/json"},
                                             body: JSON.stringify(body || {})})
     .then(r => r.json()).then(r => { if (!r.ok) $("calstatus").textContent = r.error; });
-  $("calcapture").onclick = () => {
-    const v = ["calx", "caly", "calz"].map(id => parseFloat($(id).value));
+  const xyz = (ids, path) => {
+    const v = ids.map(id => parseFloat($(id).value));
     if (v.some(isNaN)) { $("calstatus").textContent = "Enter x, y and z in cm first."; return; }
-    send("/locate/point", {x: v[0], y: v[1], z: v[2]});
+    send(path, {x: v[0], y: v[1], z: v[2]});
   };
+  $("homeset").onclick = () => xyz(["homex", "homey", "homez"], "/locate/home");
+  $("calcapture").onclick = () => xyz(["calx", "caly", "calz"], "/locate/point");
   $("calcancel").onclick = () => send("/locate/cancel");
   $("calclear").onclick = () => {
     if (confirm("Delete every calibration point? Positions stop until you capture new ones.")) send("/locate/clear");
@@ -50,6 +53,8 @@ function positionSample(sample) {
   if (loc && loc.position) posTrail.push({t: now, p: loc.position});
   while (posTrail.length && posTrail[0].t < now - TRAIL_S) posTrail.shift();
   const fmt = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1);
+  const b = measuredCoilField(sample, posState && posState.coil);
+  $("poscoilfield").textContent = b ? Math.hypot(...b).toFixed(1) + " µT" : "–";
   if (!loc || !loc.position) {
     $("posxyz").textContent = loc ? loc.why : "–";
     ["posfromhome", "posfromcoil", "posprec"].forEach(id => { $(id).textContent = "–"; });
@@ -70,20 +75,35 @@ function positionState(state) {
   $("poscard").style.display = s ? "block" : "none";
   if (!s) return;
   const n = s.points.length;
-  $("calcapture").disabled = s.capturing;
+  // fill the home boxes with what's set (or the old fit's guess), unless you're typing in them
+  const shown = s.home || s.suggested_home, homeKey = JSON.stringify(shown);
+  const typing = ["homex", "homey", "homez"].includes(document.activeElement && document.activeElement.id);
+  if (shown && !typing && $("homeset").dataset.key !== homeKey) {
+    $("homeset").dataset.key = homeKey;
+    ["homex", "homey", "homez"].forEach((id, k) => { $(id).value = shown[k]; });
+  }
+  $("homenow").textContent = s.home ? "Set: " + s.home.map(v => v.toFixed(1)).join(", ") + " cm"
+    : s.suggested_home ? "Not set. The boxes hold a guess from your old fit: check it, then click Set sensor home."
+    : "Not set.";
+  $("homeset").disabled = s.capturing;
+  $("calcapture").disabled = s.capturing || !s.home;
   $("calcancel").style.display = s.capturing ? "" : "none";
   $("calclear").disabled = !n || s.capturing;
   $("calstatus").textContent = s.message
-    || (s.capturing ? "Hold still… " + Math.round(s.capture_done * 100) + "%"
+    || (!s.home ? (s.points_from_home
+          ? "Your " + n + " points were measured from the sensor home. Set the sensor home and they'll be measured from the coil instead."
+          : "Set the sensor home first.")
+      : s.capturing ? "Hold still… " + Math.round(s.capture_done * 100) + "%"
       : s.fitting ? "Fitting the coil…"
       : n < s.min_points ? n + " of " + s.min_points + " points. Spread them around the space, some raised."
       : "");
   const c = s.coil;
   $("coilsummary").textContent = !c ? "Coil not found yet."
-    : "Coil center " + Math.hypot(...c.center).toFixed(1) + " cm from home. Field at home "
-      + c.home_field_ut.toFixed(0) + " µT. Precision at home " + (c.home_mm_per_ut >= 999 ? "none"
+    : "The fit puts the coil's center " + c.center_off_cm.toFixed(1) + " cm from 0"
+      + (c.center_off_cm > 1 ? " (more than 1 cm: check how you measured the sensor home)" : "") + ". Field at sensor home "
+      + c.home_field_ut.toFixed(0) + " µT. Precision at sensor home " + (c.home_mm_per_ut >= 999 ? "none"
       : c.home_mm_per_ut.toFixed(1) + " mm per µT") + "."
-      + (c.home_mm_per_ut > 4 ? " Home is beside the coil's middle, where positions are weak: turn the coil so one end points at home." : "");
+      + (c.home_mm_per_ut > 4 ? " The sensor home is beside the coil's middle, where positions are weak: turn the coil so one end points at it." : "");
   const key = JSON.stringify(s.points);
   const rows = $("calrows");
   if (rows.dataset.key === key) return;
@@ -112,11 +132,11 @@ function drawPosition() {
   const canvas = $("posview");
   if (!posState || canvas.offsetParent === null) return;
   const [g, w, h] = fit(canvas);
-  const coil = posState.coil, range = posState.range_cm;
-  const mid = coil ? coil.center : [0, 0, 0];
+  const coil = posState.coil, range = posState.range_cm, home = posState.home;
+  const mid = [0, 0, 0];                               // the coil's center
   const u = Math.min(w, h) / (range * 3.4) * posCamera.zoom;
   const px = p => {
-    const c = cam([p[0] - mid[0], p[1] - mid[1], p[2] - mid[2]], posCamera);
+    const c = cam(p, posCamera);
     return [w / 2 + c[0] * u, h / 2 - c[1] * u, c[2]];
   };
   const line = (a, b, col, wd, dash) => {
@@ -131,19 +151,30 @@ function drawPosition() {
   [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]]
     .forEach(([a, b]) => line(px(corners[a]), px(corners[b]), css("--line"), 1));
 
-  // home and its axes
-  const home = px([0, 0, 0]);
-  [[4,0,0,"x"],[0,4,0,"y"],[0,0,4,"z"]].forEach(([x, y, z, n]) => {
+  if (coil) {
+    drawField(g, px, coil, mid, range);
+    drawCoil(g, px, coil);
+  }
+
+  // 0, the coil's center, and the axes
+  const zero = px(mid);
+  [[6,0,0,"x"],[0,6,0,"y"],[0,0,6,"z"]].forEach(([x, y, z, n]) => {
     const e = px([x, y, z]);
-    line(home, e, css("--dim"), 1.5);
+    line(zero, e, css("--dim"), 1.5);
     label(e, n, css("--dim"));
   });
-  g.fillStyle = css("--dim"); g.beginPath(); g.arc(home[0], home[1], 3, 0, 7); g.fill();
-  label(home, "home", css("--dim"));
+  g.fillStyle = css("--dim"); g.beginPath(); g.arc(zero[0], zero[1], 3, 0, 7); g.fill();
+  label(zero, "coil center (0)", css("--dim"));
 
-  if (coil) drawCoil(g, px, coil);
+  if (home) {
+    const hp = px(home);
+    g.strokeStyle = css("--ink"); g.lineWidth = 1.5;
+    g.beginPath(); g.arc(hp[0], hp[1], 5, 0, 7); g.stroke();
+    label(hp, "sensor home", css("--ink"));
+  }
 
-  posState.points.forEach((pt, i) => {
+  // points from an old file are still measured from home, so they'd land in the wrong place
+  if (!posState.points_from_home) posState.points.forEach((pt, i) => {
     const q = px(pt.position);
     g.strokeStyle = css("--pred"); g.lineWidth = 1.5;
     g.beginPath(); g.arc(q[0], q[1], 4, 0, 7); g.stroke();
@@ -159,8 +190,15 @@ function drawPosition() {
   const loc = posLatest && posLatest.locate;
   if (loc && loc.position) {
     const p = loc.position;
-    line(px(p), px([p[0], p[1], 0]), css("--dim"), 1, [3, 3]);    // drop to home's level
+    line(px(p), px([p[0], p[1], home ? home[2] : 0]), css("--dim"), 1, [3, 3]);    // drop to home's level
     drawBoard(g, px, p, posLatest.quat);
+    const b = measuredCoilField(posLatest, coil);    // what the ICM reads from the coil
+    if (b) {
+      const size = Math.hypot(...b), len = fieldLength(size, 6);
+      const tip = px(p.map((v, k) => v + b[k] / size * len));
+      fieldArrow(g, px(p), tip, css("--meas"), 3, 10);
+      label(tip, size.toFixed(0) + " µT", css("--meas"));
+    }
   }
 }
 

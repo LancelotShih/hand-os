@@ -145,7 +145,7 @@ def _traces(c):
     if any(v is not None for v in c.get("pos_x_cm", ())):
         far = max(abs(v) for k in ("pos_x_cm", "pos_y_cm", "pos_z_cm") for v in c[k] if v is not None)
         span = next((top for top in POSITION_TOPS if top >= far), far)
-        traces += [(f"Position {axis}, from home", "cm", thin(ts, c[f"pos_{axis}_cm"]), -span, span, ())
+        traces += [(f"Position {axis}, from the coil", "cm", thin(ts, c[f"pos_{axis}_cm"]), -span, span, ())
                    for axis in "xyz"]
     return traces
 

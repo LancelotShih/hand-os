@@ -1,10 +1,10 @@
 :root { --bg:#f6f6f4; --card:#fff; --ink:#1d1f21; --dim:#6b7075; --line:#dcdcd8;
         --pred:#2f6fde; --meas:#d9572b; --good:#1b8a52; --bad:#c62f2f;
-        --trace:#2f6fde; --board:#3d7f6e; --patch:#c9c9c4; --coil:#b8733a; }
+        --trace:#2f6fde; --board:#3d7f6e; --patch:#c9c9c4; --coil:#b8733a; --field:#7b5cc4; }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#141618; --card:#1e2124; --ink:#e8e9ea; --dim:#99a0a6; --line:#34383c;
           --pred:#6ea0f5; --meas:#f08a5f; --good:#46c288; --bad:#ef6a6a;
-          --trace:#6ea0f5; --board:#4f9c88; --patch:#6c7175; --coil:#d39a63; }
+          --trace:#6ea0f5; --board:#4f9c88; --patch:#6c7175; --coil:#d39a63; --field:#ab92ea; }
 }
 * { box-sizing:border-box; }
 body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
@@ -78,4 +78,6 @@ th:first-child, td:first-child { text-align:left; }
 #calstatus { min-height:1.4em; }
 #coilsummary { margin:8px 0; }
 button.remove { padding:0 8px; }
+#posfield { font:inherit; font-size:13px; padding:5px 6px; border:1px solid var(--line); border-radius:6px;
+            background:var(--card); color:var(--ink); }
 @media (max-width:820px) { .posgrid { grid-template-columns:minmax(0,1fr); } }

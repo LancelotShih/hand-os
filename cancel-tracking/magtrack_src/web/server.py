@@ -20,6 +20,7 @@ PAGE_FILES = {
     "/board_view.js": ("board_view.js", "text/javascript; charset=utf-8"),
     "/sweep_view.js": ("sweep_view.js", "text/javascript; charset=utf-8"),
     "/chart.js": ("chart.js", "text/javascript; charset=utf-8"),
+    "/field_view.js": ("field_view.js", "text/javascript; charset=utf-8"),
     "/position_view.js": ("position_view.js", "text/javascript; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/info.js": ("info.js", "text/javascript; charset=utf-8"),
@@ -78,8 +79,9 @@ class Handler(BaseHTTPRequestHandler):
         loc = getattr(self.server.tracker, "locator", None)
         if loc is None:
             return {}
-        return {"/locate/point": lambda b: loc.capture_point(
-                    [b.get("x"), b.get("y"), b.get("z")] if all(k in b for k in "xyz") else []),
+        xyz = lambda b: [b.get("x"), b.get("y"), b.get("z")] if all(k in b for k in "xyz") else []
+        return {"/locate/home": lambda b: loc.set_home(xyz(b)),
+                "/locate/point": lambda b: loc.capture_point(xyz(b)),
                 "/locate/cancel": lambda b: loc.cancel_capture(),
                 "/locate/remove": lambda b: loc.remove_point(int(b.get("index", -1))),
                 "/locate/clear": lambda b: loc.clear_points()}

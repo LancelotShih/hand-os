@@ -92,11 +92,54 @@ class GyroBias(unittest.TestCase):
 
 
 class SensorLoss(unittest.TestCase):
-    def test_captures_again_and_keeps_the_offset(self):
-        tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
-        SimBoard(tracker).still(.5)
-        tracker.sensor_lost()
-        status = tracker.status()
-        self.assertEqual(status["capturing"], "earth")
-        self.assertIsNone(tracker.earth)
+    """The I2C link drops, the board may move with no readings, then it's back."""
+
+    def setUp(self):
+        random.seed(5)
+        self.tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
+        self.board = SimBoard(self.tracker)
+        self.board.still(1.0)                         # captured here: this is home
+        self.earth = self.tracker.earth
+
+    def gap(self, q):
+        """Disconnected for 3 s, during which the board ends up at ``q``."""
+        self.board.q = q
+        self.board.t += 3.0
+        self.tracker.sensor_lost()
+
+    def first_error_after(self):
+        self.board.samples.clear()
+        self.board.still(0.1)
+        return self.board.samples[0]["error_ut"]
+
+    def test_keeps_the_capture(self):
+        self.gap(self.board.q)
+        status = self.tracker.status()
+        self.assertIsNone(status["capturing"])
+        self.assertEqual(self.tracker.earth, self.earth)
         self.assertTrue(status["have_offset"])
+        self.assertIn("reconnected", self.tracker.message)
+        self.assertLess(self.first_error_after(), PASS_UT)
+        self.assertEqual(self.tracker.gaps, 0)
+
+    def test_tilt_comes_fresh_from_the_accelerometer(self):
+        self.gap(axis_quat((1, 0.3, 0), 35))           # tilted while disconnected
+        self.assertLess(self.first_error_after(), PASS_UT)
+        self.gap(axis_quat((0, 0, 1), 0))              # and put back flat
+        self.assertLess(self.first_error_after(), PASS_UT)
+
+    def test_a_turn_in_heading_needs_a_capture_at_home(self):
+        self.gap(axis_quat((0, 0, 1), 40))             # turned flat on the table: can't be seen
+        self.assertGreater(self.first_error_after(), PASS_UT)
+        self.board.q = axis_quat((0, 0, 1), 0)          # back on home, squared up, and captured
+        self.tracker.capture_earth()
+        self.board.still(1.0)
+        self.assertLess(self.board.samples[-1]["error_ut"], PASS_UT)
+
+    def test_a_capture_cut_off_by_the_gap_starts_over(self):
+        self.tracker.capture_earth()
+        self.board.still(0.1)
+        self.gap(self.board.q)
+        self.assertEqual(self.tracker.status()["capturing"], "earth")
+        self.board.still(1.0)
+        self.assertIsNone(self.tracker.status()["capturing"])

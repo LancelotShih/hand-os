@@ -12,7 +12,7 @@
     <h1>Earth Cancel</h1><span class="sp"></span>
     <span id="logstat"></span><a id="loglink" target="_blank"></a>
     <button id="log">Start log</button><button class="info" data-info="log"></button>
-    <button id="capture">Capture at home</button><button class="info" data-info="capture"></button>
+    <button id="capture">Capture at sensor home</button><button class="info" data-info="capture"></button>
     <button id="tumble">Tumble</button><button class="info" data-info="tumble"></button>
     <button id="reset">Reset calibration</button><button class="info" data-info="reset"></button>
   </header>
@@ -39,28 +39,47 @@
     </dl>
   </div>
   <div class="card" id="poscard">
-    <h2>Position</h2> <span class="hint">ICM, cm from home</span>
+    <h2>Position</h2> <span class="hint">where the ICM is, in cm from the center of the coil (electromagnet), which is 0</span>
     <div class="posgrid">
       <div>
         <canvas id="posview"></canvas>
         <div class="legend">
+          <span><i style="background:var(--meas)"></i>coil field the ICM reads</span>
+          <span><i style="background:var(--field)"></i>coil field from the fit <button class="info" data-info="posfieldview"></button></span>
           <span>Drag to rotate, scroll to zoom <button class="info" data-info="posview"></button></span>
+          <select id="posfield" aria-label="How to draw the coil's field">
+            <option value="arrows">Field arrows</option>
+            <option value="lines">Field lines</option>
+            <option value="off">No field</option>
+          </select>
           <button id="posreset">Reset view</button>
         </div>
       </div>
       <div>
         <div class="big" id="posxyz">&ndash;</div>
         <dl>
-          <dt>From home <button class="info" data-info="posfrom"></button></dt><dd id="posfromhome">&ndash;</dd>
+          <dt>From sensor home <button class="info" data-info="posfrom"></button></dt><dd id="posfromhome">&ndash;</dd>
           <dt>From the coil's center <button class="info" data-info="poscoil"></button></dt><dd id="posfromcoil">&ndash;</dd>
           <dt>Precision here <button class="info" data-info="posprecision"></button></dt><dd id="posprec">&ndash;</dd>
+          <dt>Coil field here <button class="info" data-info="poscoilfield"></button></dt><dd id="poscoilfield">&ndash;</dd>
         </dl>
+        <h3>Sensor home <button class="info" data-info="home"></button></h3>
+        <p class="hint">Where the ICM sits on its tape mark for Capture at sensor home, measured from the coil's center. The coil itself is always at 0.</p>
+        <div class="calentry">
+          <label>x <input id="homex" type="number" step="0.5" inputmode="decimal"></label>
+          <label>y <input id="homey" type="number" step="0.5" inputmode="decimal"></label>
+          <label>z <input id="homez" type="number" step="0.5" inputmode="decimal"></label>
+          <span class="hint">cm from the coil</span>
+          <button id="homeset">Set sensor home</button>
+        </div>
+        <div class="hint" id="homenow"></div>
         <h3>Calibration points <button class="info" data-info="calpoints"></button></h3>
+        <p class="hint">The ICM's reading with the sensor held at a spot you measured from the coil's center. Enter where the sensor is, then capture.</p>
         <div class="calentry">
           <label>x <input id="calx" type="number" step="0.5" inputmode="decimal"></label>
           <label>y <input id="caly" type="number" step="0.5" inputmode="decimal"></label>
           <label>z <input id="calz" type="number" step="0.5" inputmode="decimal"></label>
-          <span class="hint">cm</span>
+          <span class="hint">sensor position, cm from the coil</span>
           <button class="primary" id="calcapture">Capture point</button>
           <button id="calcancel">Cancel</button>
         </div>
@@ -129,6 +148,7 @@
 <script src="board_view.js"></script>
 <script src="sweep_view.js"></script>
 <script src="chart.js"></script>
+<script src="field_view.js"></script>
 <script src="position_view.js"></script>
 <script src="app.js"></script>
 <script src="info.js"></script>

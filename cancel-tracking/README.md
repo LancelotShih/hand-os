@@ -28,7 +28,7 @@ the gyro and accelerometer then predict Earth at every angle. It needs one tumbl
 ever, to measure how the chip sits on the board. That goes in `data/calibration/mmc_mounting.json`,
 which **Reset calibration** keeps, and later tumbles refresh it. If the sensor is
 remounted, tumble again. Hold the board away from magnets at startup, and click
-**Capture at home** to clear yaw drift.
+**Capture at sensor home** to clear yaw drift.
 
 The starting positions are `ICM_USE_CALIBRATION` and `MMC_USE_CALIBRATION` in
 `magtrack_src/config.py`; the switches aren't saved between runs.
@@ -90,8 +90,13 @@ cd cancel-tracking
    of 26 directions. Earth is then measured again automatically, so hold roughly still.
 3. Turn the board. The error should stay under 5 µT.
 
-**Capture at home** retakes the reading and clears yaw drift. With the coil
+**Capture at sensor home** retakes the reading and clears yaw drift. With the coil
 off, keep magnets away. With it on, capture only on the home mark (see Position).
+
+If the ICM's I2C link drops, it reconnects by itself and keeps the last capture, so
+home doesn't move. Tilt is read fresh from the accelerometer, but heading is taken
+to be what it was. If the board was turned while disconnected, the error stays
+high: put it on the sensor home and click **Capture at sensor home**.
 
 Tumble is the main calibration. It uses only the magnetometer, so gyro error
 can't affect it, and it reports the offset and radius of each axis. A green
@@ -107,23 +112,36 @@ The limit is `PASS_UT` in `magtrack_src/config.py`. It sets every green and red 
 
 ## Position
 
-The **Position** card tracks the ICM in 3D around the coil, in cm from home.
+The **Position** card tracks the ICM in 3D around the coil. Positions are in cm
+from the coil's center, which is 0, along the ICM's own x, y and z as it sits at
+its sensor home (z is up). The *sensor home* is the ICM's tape mark, where Capture
+at sensor home is done; you say where it is from the coil. The coil is always 0.
 
-The coil stays on the whole time. **Capture at home** measures Earth's field with
+The coil stays on the whole time. **Capture at sensor home** measures Earth's field with
 the board on its home mark, so the capture also holds the coil's field there. After
 that the ICM's error is the coil's field where the board is now, minus its field at
 home. `locate.py` models the coil as a bar magnet, with a pole at each end, and
 solves for the position whose field matches.
 
-1. Put the board on its home mark, squared to the tape, with the coil on. Start
-   `./earth_cancel.py`, or click **Capture at home**. Home is wherever this
-   happens, so always do it on the mark.
-2. **Calibration points.** Put the board at a spot you've measured, flat and square
-   as at home. Enter how far it is from home along the ICM's x, y and z (z is up),
+1. **Sensor home.** Measure from the coil's center to the ICM on its tape mark, along
+   the ICM's x, y and z, e.g. 15, 0, 0. Enter it under Sensor home and click
+   **Set sensor home**.
+2. Put the board on its home mark, squared to the tape, with the coil on. Start
+   `./earth_cancel.py`, or click **Capture at sensor home**. Always capture on the mark.
+3. **Calibration points.** Each is the ICM's reading with the sensor at a position
+   you measured. Put the board there, flat and square as at the sensor home. Enter
+   the sensor's position from the coil's center along the ICM's x, y and z,
    hold still and click **Capture point** (about 1 s). After 4 points the coil is
    found. 8–12 points, spread around and some raised, fit better. **Left out** is
    the honest accuracy: each point solved by a coil fitted without it.
-3. Move the board. **Capture at home** clears drift and restarts the track at home.
+4. Move the board. **Capture at sensor home** clears drift and restarts the track at home.
+
+The fit lets the coil's center sit up to 4 cm from 0 (`LOCATE_CENTER_SLACK_CM`), and
+the card says how far it put it. More than about 1 cm means home or the points were
+measured wrong. Correcting it with **Set sensor home** keeps the points where they are
+and fits the coil again. Points saved before home existed were measured from home;
+they're moved to be measured from the coil the first time you set it, and the
+boxes start with a guess for home from that old fit.
 
 **Point an end of the coil at the working area.** The coil's field is the same all
 the way round its long axis. Beside the middle of the coil, moving round it barely
@@ -132,9 +150,10 @@ shows how much the position can move per µT of field error. At 13 cm it's about
 1 mm per µT within 50° of the coil's axis, 2.8 at 70°, and unusable at 90°. With
 the coil broadside to home, home itself is at 90°.
 
-The points and the fitted coil are saved in `data/calibration/coil_cal.json` and loaded on the next
-launch. They hold only while home stays in the same spot: if the tape moves, click
-**Clear points** and capture new ones. Tumble with the coil off or far away: it
+Home, the points and the fitted coil are saved in `data/calibration/coil_cal.json` and
+loaded on the next launch. Each point's reading is taken against the field at home,
+so they hold only while the coil and the home mark stay put. If either moves, set
+the new home, click **Clear points** and capture new ones. Tumble with the coil off or far away: it
 needs the chip to see Earth alone.
 
 ## Logging
@@ -146,7 +165,7 @@ button. Each log gets its own folder named by its start time:
 data/logs/2026-10-30_23-15-02/
     plot.html      the visual, opens on its own in any browser
     samples.csv    what the view showed: orientation, field and error for each sensor,
-                   and the ICM's position in cm from home
+                   and the ICM's position in cm from the coil's center
     raw.csv        every sensor reading, offset not removed: the ICM's in the accel/gyro
                    axes, the MMC's in its own axes
     info.json      the calibration in use when the log started
@@ -217,7 +236,7 @@ Each folder in `magtrack_src/` has a short README saying what's in it and what u
 | `data/calibration/earth_cancel_mmc_offset.json` | The same for the MMC |
 | `data/calibration/mmc_mounting.json` | How the MMC sits on the board; Reset calibration keeps it |
 | `data/calibration/earth_cancel_mmc_tumble_log.json` | The MMC's readings and result from the last tumble |
-| `data/calibration/coil_cal.json` | Calibration points and the fitted coil; Clear points deletes them |
+| `data/calibration/coil_cal.json` | Home, the calibration points and the fitted coil; Clear points deletes the points and coil |
 
 ## Tests
 

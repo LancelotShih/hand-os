@@ -14,7 +14,8 @@ The ICM's Earth-cancelled error in, position out. No I/O except `Locator`'s own 
   `tracking/pair.py`). The point-capture methods are for HTTP. Fits run on their own
   thread, and points plus the coil are saved to `data/calibration/coil_cal.json`.
 
-- **Units:** cm and µT, in the home axes (the board's axes when Earth was captured on the home mark).
+- **Units:** cm and µT. Positions are from the coil's center (0), in the home axes (the board's
+  axes when Earth was captured on the home mark). `Locator.home` is the mark's position, set by the user.
 - **Settings:** `LOCATE_*` in `config.py`.
 - **Tests:** `tests/test_locate.py`.
 - **Known limit:** the coil's field is symmetric about its long axis, so beside its

@@ -53,6 +53,21 @@ def quat_angle_deg(q):
     return math.degrees(2.0 * math.acos(min(1.0, abs(q[0]))))
 
 
+def quat_between(a, b):
+    """The smallest turn that takes direction ``a`` onto direction ``b``."""
+    na, nb = norm(a), norm(b)
+    if na < 1e-9 or nb < 1e-9:
+        return (1.0, 0.0, 0.0, 0.0)
+    a, b = tuple(v / na for v in a), tuple(v / nb for v in b)
+    c = dot(a, b)
+    if c < -1.0 + 1e-9:                          # opposite: turn half way round any perpendicular
+        axis = (0.0, -a[2], a[1]) if abs(a[0]) < 0.9 else (-a[1], a[0], 0.0)
+        n = norm(axis)
+        return (0.0, axis[0] / n, axis[1] / n, axis[2] / n)
+    x = (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+    return quat_norm((1.0 + c, *x))
+
+
 def quat_from_gravity(a):
     """Quaternion (board -> level) that tilts the accelerometer's ``a`` onto +z."""
     n = norm(a)
