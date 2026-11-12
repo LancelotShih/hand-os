@@ -375,9 +375,10 @@ class Scoring(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             log = DataLog(d)
             name = log.start()
+            for k in range(50):                       # recorded with the MMC off: its columns are blank
+                log.add(100.0 + k * 0.01, (0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (20.0, -5.0, -40.0), None)
             log.stop()
-            (Path(d) / name / "raw.csv").write_text("t_s,mx_ut\n0,1\n")
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(ValueError, "--mmc"):
                 compare(Path(d) / name)
 
     def test_noise_uses_equal_time_for_both(self):

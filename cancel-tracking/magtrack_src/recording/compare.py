@@ -80,8 +80,8 @@ def compare(folder):
     c = read_samples(folder)
     with open(Path(folder) / "raw.csv", newline="") as f:
         rows = list(csv.DictReader(f))
-    if not rows or "mmc_x_ut" not in rows[0]:
-        raise ValueError("this log has no MMC readings")
+    if not any(r.get("mmc_x_ut") for r in rows):         # the column is there but blank without --mmc
+        raise ValueError("this log has no MMC readings: record it with ./earth_cancel.py --mmc")
     turned = [i for i, t in enumerate(c["turn_deg"]) if t is not None and t >= PASS_MIN_TURN_DEG]
 
     def picked(name):

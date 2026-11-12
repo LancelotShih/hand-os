@@ -1,8 +1,12 @@
 # cancel-tracking
 
 Cancels Earth's field at every angle on an ICM-20948, from one measurement, and
-compares its magnetometer (AK09916) with an MMC5983MA doing the same job at the
-same time.
+tracks the ICM in 3D around the coil (see Position). It can also compare the ICM's
+magnetometer (AK09916) with an MMC5983MA doing the same job at the same time.
+
+**The MMC is off by default**, and position tracking only ever uses the ICM. To run
+the MMC as well, start with `./earth_cancel.py --mmc`, or set `MMC_ON = True` in
+`magtrack_src/config.py`. Everything below about the MMC applies only then.
 
 Earth's field is a fixed vector `E`. Measure it once, and the gyro and
 accelerometer then say how the board has turned, so the field the magnetometer
@@ -33,7 +37,7 @@ remounted, tumble again. Hold the board away from magnets at startup, and click
 The starting positions are `ICM_USE_CALIBRATION` and `MMC_USE_CALIBRATION` in
 `magtrack_src/config.py`; the switches aren't saved between runs.
 
-## Comparing the two magnetometers
+## Comparing the two magnetometers (needs --mmc)
 
 Each magnetometer gets its own `Tracker`, and both are fed the same gyro and
 accelerometer readings. They hold the same orientation, so error from turning is
@@ -73,8 +77,9 @@ Both share the I2C bus, on separate threads. The bus runs at 100 kHz and the IMU
 loop already fills it, so setting `dtparam=i2c_arm_baudrate=400000` in
 `/boot/firmware/config.txt` and rebooting would give both more room.
 
-`--no-mmc` runs the ICM alone. If the MMC drops out, the ICM carries on and the
-reader keeps trying to reconnect.
+Without `--mmc` (the default) the ICM runs alone and has the bus to itself, and the
+page shows only its panel. If the MMC drops out, the ICM carries on and the reader
+keeps trying to reconnect.
 
 ## Use
 

@@ -47,7 +47,7 @@ function showSample(side) {
 }
 
 function sideStatus(s) {
-  if (!s) return "Switched off (--no-mmc)";
+  if (!s) return "Switched off (start with --mmc to use it)";
   if (!s.connected) return "Not connected" + (s.error ? ": " + s.error : "");
   if (s.capturing === "earth") return "Measuring Earth's field…";
   if (s.message) return s.message;
@@ -158,6 +158,9 @@ es.addEventListener("status", e => {
   showShared();
   positionState(state);
   SIDES.forEach(showSideState);
+  // a sensor that's switched off gets no panel; one panel lays its view and charts side by side
+  SIDES.forEach(side => { side.panel.style.display = side.key !== "icm" && !stateOf(side) ? "none" : ""; });
+  $("sides").classList.toggle("single", SIDES.filter(side => side.panel.style.display !== "none").length === 1);
 });
 (function frame() {
   const now = performance.now() / 1000;

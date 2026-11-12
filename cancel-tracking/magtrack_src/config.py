@@ -12,6 +12,8 @@ CALIBRATION_DIR = DATA_DIR / "calibration"
 # hardware
 I2C_BUS = 1
 I2C_ADDRESS = 0x68
+MMC_ON = False             # run the MMC5983MA beside the ICM?  Off: position uses only the ICM, and
+                           # the ICM gets the whole I2C bus.  ./earth_cancel.py --mmc turns it on for one run
 MMC_I2C_ADDRESS = 0x30
 ICM_USE_CALIBRATION = True    # start with the tumble's midpoints and corrections applied?
 MMC_USE_CALIBRATION = False   # no: SET/RESET already removes the sensor's own offset

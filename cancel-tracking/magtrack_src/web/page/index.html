@@ -18,7 +18,7 @@
   </header>
   <div class="card" id="tumblecard">
     <strong>Tumble</strong>
-    <p>Slowly turn the board through every direction, each face up and down, in one spot, for 20&ndash;30 s. Finish unlocks when both sensors are ready. <button class="info" data-info="sweep"></button></p>
+    <p>Slowly turn the board through every direction, each face up and down, in one spot, for 20&ndash;30 s. Finish unlocks when every sensor shown is ready. <button class="info" data-info="sweep"></button></p>
     <button class="primary" id="tumblefinish">Finish</button>
     <button id="tumblecancel">Cancel</button>
   </div>
@@ -116,7 +116,7 @@
         <tbody class="resultrows"></tbody>
       </table>
     </div>
-    <div class="card">
+    <div class="card viewcard">
       <canvas class="view"></canvas>
       <div class="big">&ndash;</div>
       <div class="verdict">error</div><button class="info" data-info="error"></button>
@@ -132,14 +132,14 @@
         <dt>Readings per second <button class="info" data-info="rate"></button></dt><dd class="ratenum">&ndash;</dd>
       </dl>
     </div>
-    <div class="card">
+    <div class="card chartcard">
       <div class="traces">
         <canvas class="trace-size"></canvas>
         <canvas class="trace-x"></canvas>
         <canvas class="trace-y"></canvas>
         <canvas class="trace-z"></canvas>
       </div>
-      <div class="legend"><span>Error in &micro;T, last 20 s, one scale for both sensors. Green inside the dashed 5 &micro;T limit, red outside. <button class="info" data-info="chart"></button></span></div>
+      <div class="legend"><span>Error in &micro;T, last 20 s, one scale for every sensor shown. Green inside the dashed 5 &micro;T limit, red outside. <button class="info" data-info="chart"></button></span></div>
     </div>
   </section>
 </template>

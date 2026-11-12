@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Cancel Earth's field at every angle from one measurement, and compare the
-ICM-20948's magnetometer with an MMC5983MA doing the same job at the same time.
+"""Cancel Earth's field at every angle from one measurement, and track the
+ICM-20948 around the coil.  With --mmc, an MMC5983MA runs beside it doing the
+same job, so the two magnetometers can be compared.
 
 Run with the system python3 (it has smbus2):
   ./earth_cancel.py                # open http://<this-pi's-ip>:8000
+  ./earth_cancel.py --mmc          # with the MMC5983MA as well
 
 First run: rest the board for a second, click "Tumble", follow the steps.
 Position: start with the board on its home mark and the coil on, then add
 calibration points on the page.
-After a log: python3 -m magtrack_src.recording.compare data/logs/<name>
+After a log made with --mmc: python3 -m magtrack_src.recording.compare data/logs/<name>
 See README.md for how it works and where everything lives.
 """
 
@@ -35,7 +37,9 @@ def main(argv=None):
     p.add_argument("-b", "--bus", type=int, default=config.I2C_BUS)
     p.add_argument("-a", "--address", type=lambda x: int(x, 0), default=config.I2C_ADDRESS)
     p.add_argument("--mmc-address", type=lambda x: int(x, 0), default=config.MMC_I2C_ADDRESS)
-    p.add_argument("--no-mmc", action="store_true", help="run the ICM-20948 on its own")
+    p.add_argument("--mmc", action=argparse.BooleanOptionalAction, default=config.MMC_ON,
+                   help=f"run the MMC5983MA beside the ICM-20948 (default: {'on' if config.MMC_ON else 'off'}, "
+                        "set by MMC_ON in magtrack_src/config.py)")
     p.add_argument("--host", default=config.HTTP_HOST)
     p.add_argument("--port", type=int, default=config.HTTP_PORT)
     args = p.parse_args(argv)
@@ -49,7 +53,7 @@ def main(argv=None):
     locator = Locator(config.COIL_FILE)
     tracker = Pair(Tracker(offset, bias, store, gains, use_calibration=config.ICM_USE_CALIBRATION),
                    locator=locator)
-    if not args.no_mmc:
+    if args.mmc:
         mmc_store = CalibrationFile(config.MMC_CALIBRATION_FILE, config.MMC_TUMBLE_LOG_FILE,
                                     config.MMC_MOUNTING_FILE)
         mmc_offset, _, mmc_gains = mmc_store.load()
