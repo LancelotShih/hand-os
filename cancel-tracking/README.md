@@ -123,6 +123,39 @@ that the ICM's error is the coil's field where the board is now, minus its field
 home. `locate.py` models the coil as a bar magnet, with a pole at each end, and
 solves for the position whose field matches.
 
+### Which way x, y and z point
+
+They're the ICM-20948 chip's own axes, the ones its accelerometer and gyro use.
+They are not the bench's, the tape's or the coil's.
+
+- **z** points straight up out of the chip, with the board flat and face up.
+- **x and y** are usually printed as small arrows next to the chip. The arrow tips
+  point to +x and +y.
+- **Check them on the page.** Click **Capture at sensor home**, then lift one edge
+  of the real board. The 3D board in either sensor's panel tilts the same way, and
+  its black dot marks the **+x** edge. Lift a side edge to find +y.
+
+A position is how far the chip is from the coil's center along each axis. If the
+chip sits on the coil's −x side, x is negative. For example, if the +x arrow
+points toward the coil, a sensor home 10 cm from it is (−10, 0, 0).
+
+**Getting x and y both backwards is easy to miss.** The coil's field at any spot is
+the same as at the opposite spot through its center. So if your x and y are both
+the wrong way round, every point at the coil's height still fits. Moving the board
+toward the coil or sideways still looks right on the page. Only up and down come
+out reversed. To catch it:
+
+- Capture some points above and below the coil's height, not only flat ones. With
+  backwards axes they won't fit, and **Off by** shows it.
+- After the fit, raise the board. z on the page should go up. If it goes down,
+  set the sensor home again with the signs of x and y changed, click **Clear points**,
+  and capture the points again, also with x and y changed.
+
+Getting only one of x or y backwards makes flat points fit badly too. **Off by**
+is then several cm, even with good measurements.
+
+### Setup
+
 1. **Sensor home.** Measure from the coil's center to the ICM on its tape mark, along
    the ICM's x, y and z, e.g. 15, 0, 0. Enter it under Sensor home and click
    **Set sensor home**.
@@ -132,9 +165,12 @@ solves for the position whose field matches.
    you measured. Put the board there, flat and square as at the sensor home. Enter
    the sensor's position from the coil's center along the ICM's x, y and z,
    hold still and click **Capture point** (about 1 s). After 4 points the coil is
-   found. 8–12 points, spread around and some raised, fit better. **Left out** is
-   the honest accuracy: each point solved by a coil fitted without it.
-4. Move the board. **Capture at sensor home** clears drift and restarts the track at home.
+   found. 8–12 points fit better: spread around, with some above and some below the
+   coil's height. **Left out** is the honest accuracy: each point solved by a coil
+   fitted without it.
+4. **Check the directions.** Move the board toward the coil, to one side and up. The
+   page should follow each move. If up goes down, see above.
+5. Move the board. **Capture at sensor home** clears drift and restarts the track at home.
 
 The fit lets the coil's center sit up to 4 cm from 0 (`LOCATE_CENTER_SLACK_CM`), and
 the card says how far it put it. More than about 1 cm means home or the points were
