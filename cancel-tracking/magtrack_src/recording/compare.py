@@ -1,8 +1,8 @@
-"""Which magnetometer tracks Earth's direction better?  Scores one log.
+"""Compare measured fields with each sensor's captured reference, using a coil-off recording.
 
     python3 -m magtrack_src.recording.compare data/logs/<name>     (from cancel-tracking/)
 
-Log after a Tumble, with the board turning through large angles for a while and
+Record after magnetometer rotation calibration, with the board turning through large angles and
 resting for a few seconds at the end or in the middle.  Only stretches turned
 at least PASS_MIN_TURN_DEG from the capture count: near the capture both are
 right by construction.
@@ -105,11 +105,11 @@ def compare(folder):
 def verdict(r):
     a, b = r["icm"]["direction"], r["mmc"]["direction"]
     if a is None or b is None:
-        return "No verdict: turn the board further from the capture while logging."
+        return "No comparison is available. While recording with the coil off, rotate the board farther from its reference orientation."
     if min(a[0], b[0]) <= 0.0 or max(a[0], b[0]) / min(a[0], b[0]) < 1.2:
-        return f"Too close to call on direction: typically {a[0]:.2f}° vs {b[0]:.2f}°."
+        return f"No clear ranking from the field angles: median angles are {a[0]:.2f}° and {b[0]:.2f}°."
     better, ratio = ("MMC5983MA", a[0] / b[0]) if b[0] < a[0] else ("ICM-20948", b[0] / a[0])
-    return f"{better} tracks Earth's direction better: typical error {ratio:.1f} times smaller."
+    return f"{better} has the smaller median angle between measured and reference fields. The other sensor's median angle is {ratio:.1f} times as large."
 
 
 def report(r):
@@ -119,20 +119,24 @@ def report(r):
             v = r[side][key]
             v = v[at] if v is not None and at is not None else v
             cells.append("–" if v is None else f"{v:.{places}f} {unit}")
-        return f"{label:<34}{cells[0]:>14}{cells[1]:>14}"
+        return f"{label:<62}{cells[0]:>14}{cells[1]:>14}"
 
     return "\n".join([
-        f'{r["seconds"]:.0f} s log, {r["turned_samples"]} samples turned '
-        f'{PASS_MIN_TURN_DEG:g}°+, {r["still_s"]:.0f} s still',
-        f'Software calibration: ICM {r["calibration"]["icm"]}, MMC {r["calibration"]["mmc"]}',
-        "", f'{"":<34}{"ICM-20948":>14}{"MMC5983MA":>14}',
-        row("Direction error, typical", "direction", "°", 0),
-        row("Direction error, 95% under", "direction", "°", 1),
-        row("Direction error, worst", "direction", "°", 2),
-        row("Field error, typical", "field", "µT", 0),
-        row("Field error, 95% under", "field", "µT", 1),
-        row("Field error, worst", "field", "µT", 2),
-        row(f"Still noise, {NOISE_WINDOW_S * 1000:.0f} ms average", "noise", "µT", None, 3),
+        f'Recording duration: {r["seconds"]:.0f} s. Samples with board rotation '
+        f'at least {PASS_MIN_TURN_DEG:g}° from the reference: {r["turned_samples"]}. '
+        f'Quiet-gyroscope intervals: {r["still_s"]:.0f} s.',
+        f'Magnetometer midpoint and scale corrections: ICM {r["calibration"]["icm"]}, MMC {r["calibration"]["mmc"]}',
+        "Use coil-off recordings for this comparison. Quiet gyroscope readings do not prove the board was still.",
+        "Median means half the values are at or below the reported value.",
+        "Field difference combines all three components of measured field minus reference field.",
+        "", f'{"":<62}{"ICM-20948":>14}{"MMC5983MA":>14}',
+        row("Angle between measured and reference fields: median", "direction", "°", 0),
+        row("Angle between fields: 95% at or below", "direction", "°", 1),
+        row("Angle between fields: largest", "direction", "°", 2),
+        row("Difference between measured and reference fields: median", "field", "µT", 0),
+        row("Field difference: 95% at or below", "field", "µT", 1),
+        row("Field difference: largest", "field", "µT", 2),
+        row(f"Field variation while still, {NOISE_WINDOW_S * 1000:.0f} ms averages", "noise", "µT", None, 3),
         row("Readings per second", "rate", "Hz", None, 0),
         "", verdict(r)])
 

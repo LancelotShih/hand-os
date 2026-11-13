@@ -4,14 +4,14 @@ A sensor on its own breakout isn't lined up with the gyro: it's turned by some
 whole number of quarter turns, plus a small tilt from how it was soldered.  One
 degree of tilt is about 1 uT of false error, so it has to be measured.
 
-Earth's field doesn't move, so with the right ``axes`` every tumble reading,
+The coil-off ambient field is assumed fixed, so with the right ``axes`` every tumble reading,
 turned by the orientation at that moment, lands on the same vector.  Uses only
 the gyro and accelerometer, so one magnetometer's fit can't borrow from the other.
 
 Turning can't tell ``axes`` from ``-axes``: a reading that's exactly backwards also
-stays constant.  Tracking is the same either way, because Earth is captured through
+stays constant. Tracking is the same either way, because the reference is captured through
 the same ``axes`` and only ever compared with itself, so the fit picks the one that
-isn't mirrored.  That means its Earth can point opposite to another sensor's.
+isn't mirrored. Its reference field can therefore point opposite to another sensor's.
 
 Used by: tracking/tracker.py (after a tumble).  Uses: geometry.
 """
@@ -45,7 +45,7 @@ def determinant(m):
 def inverse_transpose(m):
     d = determinant(m)
     if abs(d) < 1e-12:
-        raise ValueError("the readings don't cover enough directions")
+        raise ValueError("Sensor alignment cannot be estimated from these readings. Rotate the board through more orientations.")
     return [[(m[(r + 1) % 3][(c + 1) % 3] * m[(r + 2) % 3][(c + 2) % 3]
               - m[(r + 1) % 3][(c + 2) % 3] * m[(r + 2) % 3][(c + 1) % 3]) / d
              for c in range(3)] for r in range(3)]
@@ -61,7 +61,8 @@ def nearest_rotation(m):
     return x
 
 
-def earth_seen(axes, points, quats):
+def mean_ambient_field(axes, points, quats):
+    """Estimate the tumble's ambient field in the orientation filter's fixed axes."""
     total = (0.0, 0.0, 0.0)
     for p, q in zip(points, quats):
         total = add(total, quat_rotate(q, mat_vec(axes, p)))
@@ -69,11 +70,11 @@ def earth_seen(axes, points, quats):
 
 
 def improved(axes, points, quats):
-    """One step: the rotation that best lands every reading on the current Earth."""
-    earth = earth_seen(axes, points, quats)
+    """One step: align rotated readings with their estimated fixed ambient field."""
+    ambient_field = mean_ambient_field(axes, points, quats)
     m = [[0.0] * 3 for _ in range(3)]
     for p, q in zip(points, quats):
-        b = quat_rotate(quat_conj(q), earth)
+        b = quat_rotate(quat_conj(q), ambient_field)
         for r in range(3):
             for c in range(3):
                 m[r][c] += b[r] * p[c]
@@ -91,17 +92,17 @@ def fit_axes(points, quats):
 
     Returns ``axes`` (chip -> board), the ``plain`` quarter-turn mapping it is
     nearest, the ``tilt_deg`` between them, and ``spread_ut``: 95% of readings land
-    within this of Earth.  A sensor that needs no fit shows the method's own
-    error here."""
+    within this of the estimated ambient field. A sensor that needs no fit shows
+    the method's own error here."""
     step = max(1, len(points) // MAX_POINTS)
     points, quats = points[::step], quats[::step]
-    plain = max(plain_mappings(), key=lambda m: (round(norm(earth_seen(m, points, quats)), 3),
+    plain = max(plain_mappings(), key=lambda m: (round(norm(mean_ambient_field(m, points, quats)), 3),
                                                  determinant(m) > 0.0))
     axes = plain
     for _ in range(ROUNDS):
         axes = improved(axes, points, quats)
-    earth = earth_seen(axes, points, quats)
-    misses = sorted(norm(sub(quat_rotate(q, mat_vec(axes, p)), earth))
+    ambient_field = mean_ambient_field(axes, points, quats)
+    misses = sorted(norm(sub(quat_rotate(q, mat_vec(axes, p)), ambient_field))
                     for p, q in zip(points, quats))
     return {"axes": axes, "plain": plain,
             "tilt_deg": turned_deg(axes, plain),

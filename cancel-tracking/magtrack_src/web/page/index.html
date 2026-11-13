@@ -3,50 +3,50 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Earth Cancel</title>
+<title>Magnetic field and position tracking</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
   <header>
-    <h1>Earth Cancel</h1><span class="sp"></span>
+    <h1>Magnetic field and position tracking</h1><span class="sp"></span>
     <span id="logstat"></span><a id="loglink" target="_blank"></a>
-    <button id="log">Start log</button><button class="info" data-info="log"></button>
-    <button id="capture">Capture at sensor home</button><button class="info" data-info="capture"></button>
-    <button id="tumble">Tumble</button><button class="info" data-info="tumble"></button>
-    <button id="reset">Reset calibration</button><button class="info" data-info="reset"></button>
+    <button id="log">Start recording</button><button class="info" data-info="recordMeasurements"></button>
+    <button id="capture">Measure reference field at sensor home</button><button class="info" data-info="measureReferenceField"></button>
+    <button id="tumble">Calibrate magnetometers</button><button class="info" data-info="calibrateMagnetometers"></button>
+    <button id="reset">Clear sensor calibration</button><button class="info" data-info="clearSensorCalibration"></button>
   </header>
   <div class="card" id="tumblecard">
-    <strong>Tumble</strong>
-    <p>Slowly turn the board through every direction, each face up and down, in one spot, for 20&ndash;30 s. Finish unlocks when every sensor shown is ready. <button class="info" data-info="sweep"></button></p>
-    <button class="primary" id="tumblefinish">Finish</button>
-    <button id="tumblecancel">Cancel</button>
+    <strong>Magnetometer calibration: rotate the board</strong>
+    <p>Keep the coil off or far away. Rotate the whole sensor assembly through every orientation while staying near one spot. The field-direction coverage must be sufficient before you can calculate the corrections. The MMC must also cover enough directions if its mounting alignment is not yet known. <button class="info" data-info="calibrationDirectionCoverage"></button></p>
+    <button class="primary" id="tumblefinish">Calculate and save corrections</button>
+    <button id="tumblecancel">Cancel calibration</button>
   </div>
   <div class="card shared">
     <div class="legend">
-      <span><i style="background:var(--pred)"></i>predicted Earth</span>
-      <span><i style="background:var(--meas)"></i>measured</span>
-      <span><i style="background:var(--ink)"></i>difference</span>
-      <span>Drag to rotate, scroll to zoom <button class="info" data-info="view"></button></span>
-      <button id="tips">Zoom to tips</button>
+      <span><i style="background:var(--pred)"></i>captured reference field</span>
+      <span><i style="background:var(--meas)"></i>measured field</span>
+      <span><i style="background:var(--ink)"></i>difference between fields</span>
+      <span>Drag to rotate, scroll to zoom <button class="info" data-info="magneticFieldView"></button></span>
+      <button id="tips">Zoom to field arrow tips</button>
       <button id="resetview">Reset view</button>
     </div>
     <dl>
-      <dt>Turned from capture <button class="info" data-info="turned"></button></dt><dd id="turn">&ndash;</dd>
-      <dt>Yaw / pitch / roll <button class="info" data-info="facing"></button></dt><dd id="ypr">&ndash;</dd>
-      <dt>Gyro bias (&deg;/s) <button class="info" data-info="bias"></button></dt><dd id="bias">&ndash;</dd>
-      <dt>Loop gaps <button class="info" data-info="gaps"></button></dt><dd id="gaps">&ndash;</dd>
+      <dt>Board rotation since reference measurement <button class="info" data-info="boardRotationSinceReference"></button></dt><dd id="turn">&ndash;</dd>
+      <dt>Board orientation: yaw / pitch / roll <button class="info" data-info="boardOrientation"></button></dt><dd id="ypr">&ndash;</dd>
+      <dt>Gyroscope zero-rate estimate, x / y / z (&deg;/s) <button class="info" data-info="gyroscopeZeroRate"></button></dt><dd id="bias">&ndash;</dd>
+      <dt>Long pauses between tracker updates <button class="info" data-info="pausesBetweenReadings"></button></dt><dd id="gaps">&ndash;</dd>
     </dl>
   </div>
   <div class="card" id="poscard">
-    <h2>Position</h2> <span class="hint">where the ICM is, in cm from the center of the coil (electromagnet), which is 0</span>
+    <h2>Estimated sensor position</h2> <span class="hint">ICM coordinates in centimeters from the entered center of the electromagnet</span>
     <div class="posgrid">
       <div>
         <canvas id="posview"></canvas>
         <div class="legend">
-          <span><i style="background:var(--meas)"></i>coil field the ICM reads</span>
-          <span><i style="background:var(--field)"></i>coil field from the fit <button class="info" data-info="posfieldview"></button></span>
-          <span>Drag to rotate, scroll to zoom <button class="info" data-info="posview"></button></span>
+          <span><i style="background:var(--meas)"></i>coil field estimated from the reading</span>
+          <span><i style="background:var(--field)"></i>coil field calculated by the model <button class="info" data-info="estimatedAndModelledCoilFields"></button></span>
+          <span>Drag to rotate, scroll to zoom <button class="info" data-info="positionView"></button></span>
           <select id="posfield" aria-label="How to draw the coil's field">
             <option value="arrows">Field arrows</option>
             <option value="lines">Field lines</option>
@@ -58,38 +58,38 @@
       <div>
         <div class="big" id="posxyz">&ndash;</div>
         <dl>
-          <dt>From sensor home <button class="info" data-info="posfrom"></button></dt><dd id="posfromhome">&ndash;</dd>
-          <dt>From the coil's center <button class="info" data-info="poscoil"></button></dt><dd id="posfromcoil">&ndash;</dd>
-          <dt>Precision here <button class="info" data-info="posprecision"></button></dt><dd id="posprec">&ndash;</dd>
-          <dt>Coil field here <button class="info" data-info="poscoilfield"></button></dt><dd id="poscoilfield">&ndash;</dd>
+          <dt>Distance from sensor home <button class="info" data-info="distanceFromSensorHome"></button></dt><dd id="posfromhome">&ndash;</dd>
+          <dt>Distance from the entered coil center <button class="info" data-info="distanceFromCoilCenter"></button></dt><dd id="posfromcoil">&ndash;</dd>
+          <dt>Estimated movement per 1 &micro;T field change <button class="info" data-info="positionChangePerFieldChange"></button></dt><dd id="posprec">&ndash;</dd>
+          <dt>Estimated coil field strength <button class="info" data-info="estimatedCoilFieldStrength"></button></dt><dd id="poscoilfield">&ndash;</dd>
         </dl>
-        <h3>Sensor home <button class="info" data-info="home"></button></h3>
-        <p class="hint">Where the ICM sits on its tape mark for Capture at sensor home, measured from the coil's center. The coil itself is always at 0.</p>
+        <h3>Sensor home: reference measurement position <button class="info" data-info="sensorHomeCoordinates"></button></h3>
+        <p class="hint">The physical mark where the board sits for reference measurements. Enter its coordinates from the coil center. Saving coordinates does not measure the magnetic field.</p>
         <div class="calentry">
           <label>x <input id="homex" type="number" step="0.5" inputmode="decimal"></label>
           <label>y <input id="homey" type="number" step="0.5" inputmode="decimal"></label>
           <label>z <input id="homez" type="number" step="0.5" inputmode="decimal"></label>
           <span class="hint">cm from the coil</span>
-          <button id="homeset">Set sensor home</button>
+          <button id="homeset">Save sensor home coordinates</button>
         </div>
         <div class="hint" id="homenow"></div>
-        <h3>Calibration points <button class="info" data-info="calpoints"></button></h3>
-        <p class="hint">The ICM's reading with the sensor held at a spot you measured from the coil's center. Enter where the sensor is, then capture.</p>
+        <h3>Coil model calibration measurements <button class="info" data-info="coilCalibrationMeasurements"></button></h3>
+        <p class="hint">Hold the sensor at a position whose coordinates you measured from the coil center. Keep the board in its sensor-home orientation, enter the coordinates, then record the field.</p>
         <div class="calentry">
           <label>x <input id="calx" type="number" step="0.5" inputmode="decimal"></label>
           <label>y <input id="caly" type="number" step="0.5" inputmode="decimal"></label>
           <label>z <input id="calz" type="number" step="0.5" inputmode="decimal"></label>
           <span class="hint">sensor position, cm from the coil</span>
-          <button class="primary" id="calcapture">Capture point</button>
-          <button id="calcancel">Cancel</button>
+          <button class="primary" id="calcapture">Record field at entered position</button>
+          <button id="calcancel">Cancel measurement</button>
         </div>
         <div class="hint" id="calstatus"></div>
-        <table>
-          <thead><tr><th>#</th><th>x</th><th>y</th><th>z</th><th>Off by (mm)<button class="info" data-info="offby"></button></th><th>Left out (mm)<button class="info" data-info="leftout"></button></th><th></th></tr></thead>
+        <div class="table-scroll" role="region" tabindex="0" aria-label="Recorded coil-calibration measurements"><table>
+          <thead><tr><th>#</th><th>x</th><th>y</th><th>z</th><th>Position difference using all measurements (mm)<button class="info" data-info="positionDifferenceUsingAllMeasurements"></button></th><th>Position difference with this measurement excluded (mm)<button class="info" data-info="positionDifferenceWithMeasurementExcluded"></button></th><th></th></tr></thead>
           <tbody id="calrows"></tbody>
-        </table>
+        </table></div>
         <p class="hint" id="coilsummary"></p>
-        <button id="calclear">Clear points</button>
+        <button id="calclear">Delete coil calibration measurements</button>
       </div>
     </div>
   </div>
@@ -99,7 +99,7 @@
   <section class="side">
     <div class="card">
       <h2 class="sidename"></h2><span class="rate">&ndash;</span>
-      <label class="calswitch"><input type="checkbox" class="usecal"> Software calibration</label><button class="info" data-info="usecal"></button>
+      <label class="calswitch"><input type="checkbox" class="usecal"> Apply magnetometer midpoint and scale corrections</label><button class="info" data-info="applyMagnetometerCorrections"></button>
       <div class="status"></div>
     </div>
     <div class="card tumble">
@@ -108,28 +108,29 @@
       <canvas class="sweep"></canvas>
     </div>
     <div class="card result">
-      <div class="resultverdict"></div><button class="info" data-info="match"></button>
+      <div class="resultverdict"></div><button class="info" data-info="calibrationStrengthVariation"></button>
       <div class="resultnote"></div>
-      <div class="unit">All values in &micro;T, except Correction.</div>
-      <table>
-        <thead><tr><th>Direction</th><th>Lowest<button class="info" data-info="lowest"></button></th><th>Highest<button class="info" data-info="highest"></button></th><th>Midpoint<button class="info" data-info="midpoint"></button></th><th>Half the swing<button class="info" data-info="halfswing"></button></th><th>Correction<button class="info" data-info="correction"></button></th></tr></thead>
+      <div class="unit">Field values are in microtesla (&micro;T). The scale multiplier has no unit.</div>
+      <div class="table-scroll" role="region" tabindex="0" aria-label="Magnetometer calibration values by sensor axis"><table>
+        <thead><tr><th>Sensor axis</th><th>Fitted lowest reading<button class="info" data-info="fittedLowestReading"></button></th><th>Fitted highest reading<button class="info" data-info="fittedHighestReading"></button></th><th>Fitted midpoint<button class="info" data-info="fittedMidpoint"></button></th><th>Half of fitted reading range<button class="info" data-info="halfReadingRange"></button></th><th>Axis scale multiplier<button class="info" data-info="axisScaleMultiplier"></button></th></tr></thead>
         <tbody class="resultrows"></tbody>
-      </table>
+      </table></div>
     </div>
     <div class="card viewcard">
       <canvas class="view"></canvas>
+      <div class="readoutlabel">Difference between measured and reference fields <button class="info" data-info="differenceBetweenFields"></button></div>
       <div class="big">&ndash;</div>
-      <div class="verdict">error</div><button class="info" data-info="error"></button>
+      <div class="verdict">Waiting for a field measurement</div>
       <dl>
-        <dt>Direction error <button class="info" data-info="direction"></button></dt><dd class="deg">&ndash;</dd>
-        <dt>Worst direction error <button class="info" data-info="worstdirection"></button></dt><dd class="peakdeg">&ndash;</dd>
-        <dt>Worst field error <button class="info" data-info="worst"></button></dt><dd class="peak">&ndash;</dd>
-        <dt>Measured strength <button class="info" data-info="measured"></button></dt><dd class="mm">&ndash;</dd>
-        <dt>Expected strength <button class="info" data-info="predicted"></button></dt><dd class="pm">&ndash;</dd>
-        <dt>Since capture <button class="info" data-info="age"></button></dt><dd class="age">&ndash;</dd>
-        <dt>Midpoint (&micro;T) <button class="info" data-info="midpointreadout"></button></dt><dd class="off">&ndash;</dd>
-        <dt>Tilt on the board <button class="info" data-info="tilt"></button></dt><dd class="tilt">&ndash;</dd>
-        <dt>Readings per second <button class="info" data-info="rate"></button></dt><dd class="ratenum">&ndash;</dd>
+        <dt>Angle between measured and reference fields <button class="info" data-info="angleBetweenFields"></button></dt><dd class="deg">&ndash;</dd>
+        <dt>Largest angle between fields since reference measurement <button class="info" data-info="largestAngleBetweenFields"></button></dt><dd class="peakdeg">&ndash;</dd>
+        <dt>Largest field difference since reference measurement <button class="info" data-info="largestFieldDifference"></button></dt><dd class="peak">&ndash;</dd>
+        <dt>Measured field strength <button class="info" data-info="measuredFieldStrength"></button></dt><dd class="mm">&ndash;</dd>
+        <dt>Captured reference field strength <button class="info" data-info="referenceFieldStrength"></button></dt><dd class="pm">&ndash;</dd>
+        <dt>Time since reference measurement <button class="info" data-info="timeSinceReferenceMeasurement"></button></dt><dd class="age">&ndash;</dd>
+        <dt>Fitted sensor midpoints, x / y / z (&micro;T) <button class="info" data-info="sensorMidpoints"></button></dt><dd class="off">&ndash;</dd>
+        <dt>Estimated sensor mounting tilt <button class="info" data-info="estimatedSensorMountingTilt"></button></dt><dd class="tilt">&ndash;</dd>
+        <dt>Readings per second <button class="info" data-info="readingsPerSecond"></button></dt><dd class="ratenum">&ndash;</dd>
       </dl>
     </div>
     <div class="card chartcard">
@@ -139,7 +140,7 @@
         <canvas class="trace-y"></canvas>
         <canvas class="trace-z"></canvas>
       </div>
-      <div class="legend"><span>Error in &micro;T, last 20 s, one scale for every sensor shown. Green inside the dashed 5 &micro;T limit, red outside. <button class="info" data-info="chart"></button></span></div>
+      <div class="legend"><span>Difference from the reference field during the last 20 seconds, in &micro;T. All sensors use the same scale. Colors show whether the difference is within the configured comparison threshold. With the coil on, sensor movement is expected to change the field. <button class="info" data-info="fieldDifferenceCharts"></button></span></div>
     </div>
   </section>
 </template>

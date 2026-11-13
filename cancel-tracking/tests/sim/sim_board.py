@@ -8,7 +8,7 @@ import random
 
 from magtrack_src.geometry.vectors import add, quat_conj, quat_mul, quat_norm, quat_rotate
 
-EARTH = (17.0, -4.0, -43.0)
+AMBIENT_FIELD = (17.0, -4.0, -43.0)  # uniform, steady background in the fixed world axes
 OFFSET = (-74.9, 64.0, 7.9)      # about 100 uT, in the board's axes
 GYRO_BIAS = (0.4, -0.3, 0.25)
 STEP_S = 0.002
@@ -43,8 +43,8 @@ class SimBoard:
         gyro = tuple(rate_dps[i] + self.gyro_bias[i] + random.gauss(0, .05) for i in range(3))
         mag = None
         if self._k % 5 == 0:
-            world = EARTH if self.coil is None else add(EARTH, self.coil.field(self.pos))
-            field = quat_rotate(quat_conj(self.q), world)
+            total_field = AMBIENT_FIELD if self.coil is None else add(AMBIENT_FIELD, self.coil.field(self.pos))
+            field = quat_rotate(quat_conj(self.q), total_field)
             field = add(tuple(f * g for f, g in zip(field, self.mag_gain)), OFFSET)
             mag = tuple(v + random.gauss(0, 0.4) for v in field)
         sample = self.tracker.update(accel, gyro, mag, self.t)

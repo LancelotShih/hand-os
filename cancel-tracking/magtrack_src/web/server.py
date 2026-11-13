@@ -72,7 +72,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(size))
         except ValueError:
-            raise ValueError("couldn't read what the page sent")
+            raise ValueError("The submitted values could not be read. Check the entries and try again.")
         return body if isinstance(body, dict) else {}
 
     def _locate_routes(self):
@@ -97,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = {"ok": False, "error": str(e)}
             self._send(json.dumps(body).encode(), "application/json")
             return
-        fn = {"/capture": t.capture_earth,
+        fn = {"/capture": t.capture_reference_field,
               "/calibration/icm/toggle": lambda: t.toggle_calibration("icm"),
               "/calibration/mmc/toggle": lambda: t.toggle_calibration("mmc"),
               "/tumble/start": t.tumble_start, "/tumble/finish": t.tumble_finish,

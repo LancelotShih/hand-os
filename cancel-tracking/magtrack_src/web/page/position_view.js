@@ -32,14 +32,14 @@ let posLatest = null, posState = null, posDrag = null;
     .then(r => r.json()).then(r => { if (!r.ok) $("calstatus").textContent = r.error; });
   const xyz = (ids, path) => {
     const v = ids.map(id => parseFloat($(id).value));
-    if (v.some(isNaN)) { $("calstatus").textContent = "Enter x, y and z in cm first."; return; }
+    if (v.some(isNaN)) { $("calstatus").textContent = "Enter all three sensor coordinates, x, y and z, in centimeters from the coil center."; return; }
     send(path, {x: v[0], y: v[1], z: v[2]});
   };
   $("homeset").onclick = () => xyz(["homex", "homey", "homez"], "/locate/home");
   $("calcapture").onclick = () => xyz(["calx", "caly", "calz"], "/locate/point");
   $("calcancel").onclick = () => send("/locate/cancel");
   $("calclear").onclick = () => {
-    if (confirm("Delete every calibration point? Positions stop until you capture new ones.")) send("/locate/clear");
+    if (confirm("Delete all recorded coil-calibration measurements and the fitted coil model? Sensor corrections and home coordinates will be kept. Position estimates require a new coil model.")) send("/locate/clear");
   };
   $("calrows").addEventListener("click", e => {
     const i = e.target.dataset && e.target.dataset.remove;
@@ -65,7 +65,7 @@ function positionSample(sample) {
   $("posxyz").textContent = "x " + fmt(p[0]) + "  y " + fmt(p[1]) + "  z " + fmt(p[2]) + " cm";
   $("posfromhome").textContent = loc.from_home_cm.toFixed(1) + " cm";
   $("posfromcoil").textContent = loc.from_coil_cm.toFixed(1) + " cm";
-  $("posprec").textContent = loc.mm_per_ut >= 999 ? "none here" : loc.mm_per_ut.toFixed(1) + " mm per µT";
+  $("posprec").textContent = loc.mm_per_ut >= 999 ? "999 mm per µT or more" : loc.mm_per_ut.toFixed(1) + " mm per µT";
   $("posprec").className = loc.mm_per_ut <= 1.5 ? "good" : loc.mm_per_ut > 4 ? "bad" : "";
 }
 
@@ -82,28 +82,28 @@ function positionState(state) {
     $("homeset").dataset.key = homeKey;
     ["homex", "homey", "homez"].forEach((id, k) => { $(id).value = shown[k]; });
   }
-  $("homenow").textContent = s.home ? "Set: " + s.home.map(v => v.toFixed(1)).join(", ") + " cm"
-    : s.suggested_home ? "Not set. The boxes hold a guess from your old fit: check it, then click Set sensor home."
-    : "Not set.";
+  $("homenow").textContent = s.home ? "Saved home coordinates (x, y, z): " + s.home.map(v => v.toFixed(1)).join(", ") + " cm"
+    : s.suggested_home ? "Home coordinates are not saved. The entries are estimates from an older coil model. Check them, then click Save sensor home coordinates."
+    : "Home coordinates are not saved.";
   $("homeset").disabled = s.capturing;
   $("calcapture").disabled = s.capturing || !s.home;
   $("calcancel").style.display = s.capturing ? "" : "none";
   $("calclear").disabled = !n || s.capturing;
   $("calstatus").textContent = s.message
     || (!s.home ? (s.points_from_home
-          ? "Your " + n + " points were measured from the sensor home. Set the sensor home and they'll be measured from the coil instead."
-          : "Set the sensor home first.")
-      : s.capturing ? "Hold still… " + Math.round(s.capture_done * 100) + "%"
-      : s.fitting ? "Fitting the coil…"
-      : n < s.min_points ? n + " of " + s.min_points + " points. Spread them around the space, some raised."
+          ? "The " + n + " saved measurements use the old sensor-home origin. Save the home coordinates to convert their positions to coordinates from the coil center."
+          : "Save the sensor-home coordinates before recording coil-calibration measurements.")
+      : s.capturing ? "Recording the field. Hold the board still: " + Math.round(s.capture_done * 100) + "%"
+      : s.fitting ? "Calculating the coil model from the recorded positions and fields…"
+      : n < s.min_points ? n + " measurements recorded. At least " + s.min_points + " are needed to calculate a coil model. Use different positions and heights."
       : "");
   const c = s.coil;
-  $("coilsummary").textContent = !c ? "Coil not found yet."
-    : "The fit puts the coil's center " + c.center_off_cm.toFixed(1) + " cm from 0"
-      + (c.center_off_cm > 1 ? " (more than 1 cm: check how you measured the sensor home)" : "") + ". Field at sensor home "
-      + c.home_field_ut.toFixed(0) + " µT. Precision at sensor home " + (c.home_mm_per_ut >= 999 ? "none"
+  $("coilsummary").textContent = !c ? "No coil model is available. Record magnetic fields at measured positions to calculate one."
+    : "The model places the coil center " + c.center_off_cm.toFixed(1) + " cm from the entered origin"
+      + (c.center_off_cm > 1 ? " (more than 1 cm: check the entered coordinates and the coil-model assumptions)" : "") + ". Modelled coil field strength at sensor home: "
+      + c.home_field_ut.toFixed(0) + " µT. Estimated movement per 1 µT field change at home: " + (c.home_mm_per_ut >= 999 ? "999 mm per µT or more"
       : c.home_mm_per_ut.toFixed(1) + " mm per µT") + "."
-      + (c.home_mm_per_ut > 4 ? " The sensor home is beside the coil's middle, where positions are weak: turn the coil so one end points at it." : "");
+      + (c.home_mm_per_ut > 4 ? " The model indicates that position is hard to distinguish near home. Placing home near an end of the coil can help; moving the mark or coil requires new reference and coil-calibration measurements." : "");
   const key = JSON.stringify(s.points);
   const rows = $("calrows");
   if (rows.dataset.key === key) return;
@@ -121,7 +121,7 @@ function positionState(state) {
     del.textContent = "×";
     del.className = "remove";
     del.dataset.remove = i;
-    del.setAttribute("aria-label", "Remove point " + (i + 1));
+    del.setAttribute("aria-label", "Remove coil-calibration measurement " + (i + 1));
     cell.appendChild(del);
     row.appendChild(cell);
     rows.appendChild(row);

@@ -1,4 +1,7 @@
-"""Measures the gyro's bias whenever the board happens to rest.
+"""Estimates gyro bias from quiet, low-rate windows assumed to represent rest.
+
+Only gyro values are observed. A slow steady turn can satisfy the heuristic;
+elapsed time across a gap is not distinguished from continuous observations.
 
 Used by: tracking/tracker.py.  Uses: geometry, config.
 """

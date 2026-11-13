@@ -1,7 +1,8 @@
 // The coil's field, worked out on the page from the fitted coil, for the Position
 // card.  Same model as position/locate.py: a bar magnet with a pole at each end,
 //   B(p) = q (p - a) / |p - a|^3  -  q (p - b) / |p - b|^3,   a, b = center ± half_length · axis
-// in µT, with p in cm from home, in the home axes.  Drawn as arrows on a grid
+// in µT, with p in cm from the measured coil center, in the reference axes.
+// Drawn as arrows on a grid
 // through the cube, or as field lines from the north pole round to the south.
 const FIELD_GRID = 7;                  // arrows along each edge of the cube
 const FIELD_LINE_COUNT = 26;           // field lines leaving the north pole

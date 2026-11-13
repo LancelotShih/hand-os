@@ -1,8 +1,8 @@
 """The MMC5983MA magnetometer, over I2C.  Needs smbus2.
 
-Each reading is a SET/RESET pair: the field flips sign in the sensor between the
-two and the sensor's own drift doesn't, so half their difference is the field
-alone, whatever the temperature.
+Each reading is a SET/RESET pair. The field response flips polarity but a common
+sensor offset does not, so half the difference removes that offset. External
+fields remain, and the two conversions occur at different times.
 
 Used by: hardware/mmc_loop.py.  Uses: smbus2, config.
 """
