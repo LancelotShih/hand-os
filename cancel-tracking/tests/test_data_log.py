@@ -114,7 +114,7 @@ class Logging(unittest.TestCase):
         self.log.add(1.0, (0, 0, 1), (0, 0, 0), None, None)
         status = self.log.status()
         self.assertFalse(status["active"])
-        self.assertIn("log stopped", status["error"])
+        self.assertIn("Recording stopped because a file could not be written", status["error"])
 
 
 class Plot(unittest.TestCase):
@@ -162,7 +162,9 @@ class Plot(unittest.TestCase):
                   if e.get("class") == "title"] or [e.text for e in root.iter("text")
                                                     if e.get("class") == "title"]
         self.assertEqual([t.strip() for t in titles],
-                         ["|error|", "Error x", "Error y", "Error z", "Turned from capture"])
+                         ["field difference from the reference", "field difference along x",
+                          "field difference along y", "field difference along z",
+                          "Board rotation since reference measurement"])
         self.assertEqual(len(re.findall('class="trace"', svg)), 5)
         self.assertNotIn("{{", text)
 

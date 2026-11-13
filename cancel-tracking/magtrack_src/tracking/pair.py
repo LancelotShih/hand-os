@@ -1,10 +1,10 @@
 """Runs the two magnetometers side by side.
 
-Each gets its own Tracker, and both trackers are fed the same gyro and
-accelerometer readings, so they hold the same orientation.  Any error from turning
-is then shared: a difference between them is a difference between the magnetometers.
+Each gets its own Tracker, fed the same gyro and accelerometer inputs. Orientation
+state is duplicated; magnetic capture times, sample ages and averaging blocks
+are separate. Comparison therefore includes timing and calibration effects.
 
-Has the Tracker's control methods, so the server doesn't care which it's given.
+Exposes the pair control/status interface used by the server.
 A ``Locator``, if given, turns the ICM's error into a position on every sample.
 
 Used by: earth_cancel.py, hardware/icm_loop.py, web/server.py.  Uses: the Trackers, MmcReader and Locator it's given.
@@ -38,15 +38,15 @@ class Pair:
                 sample["locate"] = self.locator.update(sample)
         return sample
 
-    def capture_earth(self):
-        self.icm.capture_earth()
+    def capture_reference_field(self):
+        self.icm.capture_reference_field()
         if self.mmc is not None:
-            self.mmc.capture_earth()
+            self.mmc.capture_reference_field()
 
     def toggle_calibration(self, side):
         tracker = {"icm": self.icm, "mmc": self.mmc}[side]
         if tracker is None:
-            raise ValueError("that sensor is switched off")
+            raise ValueError("The selected sensor is disabled.")
         tracker.set_calibration(not tracker.use_calibration)
 
     def tumble_start(self):
@@ -67,7 +67,7 @@ class Pair:
     def tumble_finish(self):
         mmc = self.mmc.status() if self.mmc is not None else None
         if mmc is not None and mmc["tumbling"] and self._waiting_for_mmc(mmc):
-            raise ValueError("keep turning: the MMC hasn't covered enough directions yet")
+            raise ValueError("Keep rotating the board. The MMC still needs more field directions or magnetic readings to estimate its mounting alignment.")
         self.icm.tumble_finish()
         if mmc is not None and mmc["tumbling"]:
             if self._mmc_on and mmc["tumble_ready"]:

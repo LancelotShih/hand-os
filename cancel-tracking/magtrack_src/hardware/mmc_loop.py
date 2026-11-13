@@ -1,7 +1,8 @@
 """Reads the MMC5983MA forever on its own thread, reconnecting if it drops out.
 
 Its own thread because a reading takes milliseconds of waiting, and the IMU loop
-must not wait with it.  The kernel keeps the two threads' bus traffic apart.
+must not wait with it. The kernel serializes bus transactions; the threads still
+share bandwidth. A single latest-unread slot can overwrite unconsumed readings.
 
 Used by: earth_cancel.py, tracking/pair.py (take).  Uses: hardware/mmc5983.py.
 """

@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from magtrack_src.calibration.mounting import (determinant, earth_seen, fit_axes, nearest_rotation, plain_mappings,
+from magtrack_src.calibration.mounting import (determinant, mean_ambient_field, fit_axes, nearest_rotation, plain_mappings,
                       turned_deg)
 from magtrack_src.calibration.store import CalibrationFile
 from magtrack_src.recording.compare import compare, noise_ut, report, still_stretches, verdict
@@ -16,7 +16,7 @@ from magtrack_src.geometry.vectors import mat_vec, norm, quat_conj, quat_rotate
 from magtrack_src.hardware.mmc5983 import COUNTS_PER_UT, counts, field_ut
 from magtrack_src.hardware.mmc_loop import MmcReader
 from magtrack_src.tracking.pair import Pair
-from tests.sim.sim_board import EARTH, GYRO_BIAS, OFFSET, SimBoard
+from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard
 from magtrack_src.tracking.tracker import Tracker
 
 MMC_OFFSET = (31.0, -12.0, 44.0)
@@ -59,7 +59,7 @@ class FakeReader:
         self.calls += 1
         if self.calls % 8 or not self.connected:
             return None
-        board = quat_rotate(quat_conj(self.board.q), EARTH)
+        board = quat_rotate(quat_conj(self.board.q), AMBIENT_FIELD)
         chip = mat_vec(transpose(self.axes), board)
         return (tuple(c + o + random.gauss(0, self.noise) for c, o in zip(chip, self.offset)),
                 self.board.t - 0.003)
@@ -83,7 +83,7 @@ class Mounting(unittest.TestCase):
             u = i * .03
             for _ in range(10):
                 board.step((90 * math.sin(.71 * u), 110 * math.sin(.53 * u + 1.3), 80 * math.sin(.37 * u)))
-            b = quat_rotate(quat_conj(board.q), EARTH)
+            b = quat_rotate(quat_conj(board.q), AMBIENT_FIELD)
             points.append(tuple(v + random.gauss(0, noise)
                                 for v in mat_vec(transpose(chip_to_board), b)))
             quats.append(board.q)
@@ -116,8 +116,8 @@ class Mounting(unittest.TestCase):
     def test_backwards_and_forwards_score_the_same(self):
         points, quats = self.tumble(QUARTER_TILTED)
         backwards = [[-v for v in row] for row in QUARTER_TILTED]
-        self.assertAlmostEqual(norm(earth_seen(QUARTER_TILTED, points, quats)),
-                               norm(earth_seen(backwards, points, quats)))
+        self.assertAlmostEqual(norm(mean_ambient_field(QUARTER_TILTED, points, quats)),
+                               norm(mean_ambient_field(backwards, points, quats)))
 
     def test_a_square_sensor_shows_almost_no_tilt(self):
         points, quats = self.tumble(about(2, 0))
@@ -257,7 +257,7 @@ class SideBySide(unittest.TestCase):
         board = SimBoard(pair, gyro_bias=GYRO_BIAS)
         reader.board = board
         board.still(1.0)                           # started up, nobody clicked anything
-        self.assertIsNotNone(pair.mmc.earth)
+        self.assertIsNotNone(pair.mmc.reference_field)
         self.assertFalse(pair.mmc.status()["have_offset"])
         board.samples.clear()
         board.turn((1, 0, 0), 150)
@@ -359,7 +359,7 @@ class Scoring(unittest.TestCase):
             with open(folder / "samples.csv", newline="") as f:
                 header = next(csv.reader(f))
             self.assertIn("plot.html", [p.name for p in folder.iterdir()])
-            self.assertIn("MMC direction error", (folder / "plot.html").read_text())
+            self.assertIn("MMC angle between measured and reference fields", (folder / "plot.html").read_text())
         self.assertIn("mmc_error_deg", header)
         self.assertGreater(r["turned_samples"], 30)
         self.assertGreater(r["still_s"], 2.0)
@@ -368,8 +368,8 @@ class Scoring(unittest.TestCase):
         self.assertGreater(r["icm"]["rate"], 90)
         self.assertGreater(r["mmc"]["rate"], 50)
         self.assertLess(r["mmc"]["direction"][0], 2.0)
-        self.assertIn("Direction error, typical", text)
-        self.assertIn("Software calibration: ICM on, MMC on", text)
+        self.assertIn("Angle between measured and reference fields: median", text)
+        self.assertIn("Magnetometer midpoint and scale corrections: ICM on, MMC on", text)
 
     def test_a_log_without_the_mmc_is_refused_plainly(self):
         with tempfile.TemporaryDirectory() as d:
@@ -396,10 +396,10 @@ class Scoring(unittest.TestCase):
 
     def test_verdicts(self):
         r = {"icm": {"direction": (2.0, 3, 4)}, "mmc": {"direction": (1.0, 2, 3)}}
-        self.assertIn("MMC5983MA tracks", verdict(r))
+        self.assertIn("MMC5983MA has the smaller median angle", verdict(r))
         r["mmc"]["direction"] = (4.0, 5, 6)
-        self.assertIn("ICM-20948 tracks", verdict(r))
+        self.assertIn("ICM-20948 has the smaller median angle", verdict(r))
         r["mmc"]["direction"] = (2.1, 5, 6)
-        self.assertIn("Too close", verdict(r))
+        self.assertIn("No clear ranking", verdict(r))
         r["mmc"]["direction"] = None
-        self.assertIn("No verdict", verdict(r))
+        self.assertIn("No comparison is available", verdict(r))

@@ -133,19 +133,19 @@ def _traces(c):
     if has_mmc(c):                  # every plot in a pair shares one scale
         deg = nice_top(max((v for _, p in sides for v in c[p + "error_deg"] if v is not None),
                            default=0.0))
-        traces += [(f"{label}direction error", "°", thin(ts, c[p + "error_deg"]), 0.0, deg, ())
+        traces += [(f"{label}angle between measured and reference fields", "°", thin(ts, c[p + "error_deg"]), 0.0, deg, ())
                    for label, p in sides]
-    traces += [(f"{label}|error|", "µT", thin(ts, c[p + "error_ut"]), 0.0, top, (PASS_UT,))
+    traces += [(f"{label}field difference from the reference", "µT", thin(ts, c[p + "error_ut"]), 0.0, top, (PASS_UT,))
                for label, p in sides]
     for axis in "xyz":
-        traces += [(f"{label}error {axis}" if label else f"Error {axis}", "µT",
+        traces += [(f"{label}field difference along {axis}", "µT",
                     thin(ts, c[f"{p}error_{axis}_ut"]), -top, top, ()) for label, p in sides]
-    traces.append(("Turned from capture", "°", thin(ts, c["turn_deg"]), 0.0, 180.0,
+    traces.append(("Board rotation since reference measurement", "°", thin(ts, c["turn_deg"]), 0.0, 180.0,
                    (PASS_MIN_TURN_DEG,)))
     if any(v is not None for v in c.get("pos_x_cm", ())):
         far = max(abs(v) for k in ("pos_x_cm", "pos_y_cm", "pos_z_cm") for v in c[k] if v is not None)
         span = next((top for top in POSITION_TOPS if top >= far), far)
-        traces += [(f"Position {axis}, from the coil", "cm", thin(ts, c[f"pos_{axis}_cm"]), -span, span, ())
+        traces += [(f"Estimated position along {axis}, from the entered coil center", "cm", thin(ts, c[f"pos_{axis}_cm"]), -span, span, ())
                    for axis in "xyz"]
     return traces
 
@@ -164,14 +164,14 @@ def render(name, c):
                  HEADER_H + i * (PLOT_H + HEADER_H), i == rows - 1)
            for i, (title, unit, points, low, high, target) in enumerate(traces)]
     fmt = lambda v, u: "–" if v is None else f"{v:.1f} {u}"
-    tiles = "".join((_tile("Length", f'{stats["seconds"]:.1f} s'),
-                     _tile("Samples", f'{stats["samples"]:,}')))
+    tiles = "".join((_tile("Recording duration", f'{stats["seconds"]:.1f} s'),
+                     _tile("Recorded view samples", f'{stats["samples"]:,}')))
     for label, prefix in (("ICM ", ""), ("MMC ", "mmc_")) if has_mmc(c) else (("", ""),):
         side = summarize(c, prefix)
         tiles += "".join((
-            _tile(f"{label}mean error", fmt(side["mean"], "µT")),
-            _tile(f"{label}worst error", fmt(side["worst"], "µT")),
-            _tile(f"{label}under {PASS_UT:g} µT once turned {PASS_MIN_TURN_DEG:g}°+",
+            _tile(f"{label}mean field difference from the reference", fmt(side["mean"], "µT")),
+            _tile(f"{label}largest field difference from the reference", fmt(side["worst"], "µT")),
+            _tile(f"{label}samples below {PASS_UT:g} µT, after at least {PASS_MIN_TURN_DEG:g}° board rotation",
                   fmt(side["under"], "%"))))
     data = json.dumps([{"name": f"{t[0]} ({t[1]})", "points": [[round(p[0], 3), round(p[1], 2)] for p in t[2]]}
                        for t in traces], separators=(",", ":"))
@@ -195,7 +195,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Earth Cancel Log</title>
+<title>Magnetic field tracking recording</title>
 <style>
 :root { --bg:#f6f6f4; --card:#fff; --ink:#1d1f21; --dim:#6b7075; --line:#e2e2de; --trace:#2f6fde; }
 @media (prefers-color-scheme: dark) {
@@ -225,15 +225,21 @@ a { color:var(--trace); }
 <body>
 <main>
   <h1>{{NAME}}</h1>
+  <p>The field-difference plots show measured magnetic field minus captured reference field.
+  Their overall size combines all three components; it is not just a difference in strengths.
+  With the coil on, sensor movement is expected to change this reading.
+  Board rotation is the change in board orientation since the reference measurement;
+  the angle between fields compares the magnetic readings themselves.
+  Dashed lines use the current comparison thresholds.</p>
   <div class="tiles">{{TILES}}</div>
   <div class="card" id="plots">
-    <svg id="svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" role="img" aria-label="Error and turn angle over time">
+    <svg id="svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" role="img" aria-label="Differences from the magnetic reference field and board rotation over time">
 {{SVG}}
 <line id="cross" y1="0" y2="{{HEIGHT}}"/>
     </svg>
     <div id="tip"></div>
   </div>
-  <div>Raw data: <a href="samples.csv">samples.csv</a> &middot; <a href="raw.csv">raw.csv</a> &middot; <a href="info.json">info.json</a></div>
+  <div>Recording files: <a href="samples.csv">Displayed estimates (samples.csv)</a> &middot; <a href="raw.csv">Sensor readings (raw.csv)</a> &middot; <a href="info.json">Starting state (info.json)</a></div>
 </main>
 <script>
 const traces = {{DATA}}, scale = {{SCALE}};

@@ -39,7 +39,7 @@ class CalibrationFile:
             {"offset": list(offset), "bias": list(bias), "gains": list(gains)}, indent=2))
 
     def clear(self):
-        """Forget every calibration.  Recorded logs and the mounting are kept."""
+        """Delete sensor corrections and the saved tumble result; keep recordings and mounting."""
         for path in (self.path, self.tumble_log_path):
             path.unlink(missing_ok=True)
 

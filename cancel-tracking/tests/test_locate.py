@@ -11,7 +11,7 @@ from magtrack_src.config import LOCATE_CENTER_SLACK_CM, LOCATE_POINT_SAMPLES
 from magtrack_src.geometry.vectors import add, norm, sub
 from magtrack_src.position.locate import Coil, Locator, check_points, fit_coil, mm_per_ut, solve
 from magtrack_src.tracking.pair import Pair
-from tests.sim.sim_board import GYRO_BIAS, OFFSET, SimBoard, axis_quat
+from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard, axis_quat
 from magtrack_src.tracking.tracker import Tracker
 
 # Positions are cm from the coil's center as the user measured it.  The magnet
@@ -90,7 +90,7 @@ def run_locator(locator):
 
 
 class OnTheBoard(unittest.TestCase):
-    """The whole chain, simulated: coil always on, Earth captured at home."""
+    """The whole chain, simulated: coil always on, total field captured at home."""
 
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
@@ -103,6 +103,7 @@ class OnTheBoard(unittest.TestCase):
         self.board.still(1.5)                         # gyro bias, then the home capture
 
     def tearDown(self):
+        run_locator(self.locator)  # finish background saves before removing their directory
         self.dir.cleanup()
 
     def capture(self, p):
@@ -114,7 +115,7 @@ class OnTheBoard(unittest.TestCase):
         run_locator(self.locator)
 
     def test_positions_after_calibrating(self):
-        self.assertEqual(self.board.samples[-1]["locate"]["why"], "not calibrated")
+        self.assertEqual(self.board.samples[-1]["locate"]["why"], "No coil model is available. Record fields at measured positions to calibrate the coil model.")
         for p in SPOTS[:8]:
             self.capture(p)
         status = self.locator.status()
@@ -142,6 +143,10 @@ class OnTheBoard(unittest.TestCase):
         self.assertEqual(status["home"], list(HOME))
         self.assertEqual(saved["home"], list(HOME))
 
+    def test_coil_on_reference_includes_ambient_and_coil_at_home(self):
+        expected_reference = add(AMBIENT_FIELD, END_ON.field(HOME))
+        self.assertLess(norm(sub(self.pair.icm.reference_field, expected_reference)), 1.0)
+
     def test_a_moving_reading_is_not_kept(self):
         self.board.pos = add(HOME, (5.0, 0.0, 0.0))
         self.locator.capture_point(self.board.pos)
@@ -163,7 +168,7 @@ class OnTheBoard(unittest.TestCase):
         self.locator.clear_points()
         self.assertIsNone(self.locator.status()["coil"])
         self.board.still(0.3)
-        self.assertEqual(self.board.samples[-1]["locate"]["why"], "not calibrated")
+        self.assertEqual(self.board.samples[-1]["locate"]["why"], "No coil model is available. Record fields at measured positions to calibrate the coil model.")
 
     def test_capturing_at_home_again_restarts_the_track_at_home(self):
         for p in SPOTS[:6]:
@@ -171,7 +176,7 @@ class OnTheBoard(unittest.TestCase):
         self.board.pos = HOME
         self.board.q = axis_quat((0, 0, 1), 0.0)
         self.board.still(0.3)
-        self.pair.capture_earth()
+        self.pair.capture_reference_field()
         self.board.still(1.0)
         got = self.board.samples[-1]["locate"]["position"]
         self.assertLess(norm(sub(got, HOME)), 0.2)
@@ -202,7 +207,7 @@ class Home(unittest.TestCase):
         locator = Locator(self.path)
         with self.assertRaises(ValueError):
             locator.capture_point((1, 2, 3))
-        self.assertEqual(locator.update({"error": [0, 0, 0], "predicted": [1, 2, 3]})["why"], "sensor home not set")
+        self.assertEqual(locator.update({"error": [0, 0, 0], "predicted": [1, 2, 3]})["why"], "Sensor-home coordinates are not saved. Enter and save them before tracking position.")
         with self.assertRaises(ValueError):
             locator.set_home((1, 0, 0))               # that's inside the coil
         locator.set_home(HOME)

@@ -8,7 +8,7 @@ from pathlib import Path
 from magtrack_src.calibration.store import CalibrationFile
 from magtrack_src.config import PASS_MIN_TURN_DEG, PASS_UT, TUMBLE_MAX_POINTS
 from magtrack_src.geometry.vectors import norm, sub
-from tests.sim.sim_board import EARTH, GYRO_BIAS, OFFSET, SimBoard
+from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard
 from magtrack_src.tracking.tracker import Tracker
 from magtrack_src.calibration.tumble import SECTORS, Tumble, coverage, fit_ellipsoid, fit_tumble, spread_95
 
@@ -231,7 +231,7 @@ class WholeFlow(unittest.TestCase):
         r = tracker.status()["tumble_result"]
         self.assertTrue(r["passed"])
         self.assertLess(norm(sub(r["center"], OFFSET)), 1)
-        expected = max(GAIN) * norm(EARTH) - min(GAIN) * norm(EARTH)
+        expected = max(GAIN) * norm(AMBIENT_FIELD) - min(GAIN) * norm(AMBIENT_FIELD)
         self.assertLess(r["asymmetry_ut"], expected * 1.5)
         self.assertGreater(r["asymmetry_ut"], 1)
         board.samples.clear()
@@ -278,13 +278,13 @@ class WholeFlow(unittest.TestCase):
             self.assertEqual(status["gains"], [1.0, 1.0, 1.0])
             self.assertEqual(status["bias"], [0.0, 0.0, 0.0])
             self.assertIsNone(status["tumble_result"])
-            self.assertIsNone(tracker.earth)
+            self.assertIsNone(tracker.reference_field)
             self.assertEqual(store.load(), (None, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)))
             self.assertFalse(store.tumble_log_path.exists())
             self.assertTrue(recording.exists())
             board.still(.5)                                 # a later capture still works
             self.assertIsNone(status["capturing"] and tracker.status()["capturing"])
-            self.assertIsNone(tracker.earth)                # nothing to cancel against yet
+            self.assertIsNone(tracker.reference_field)                # nothing to cancel against yet
 
     def test_reset_stops_a_running_tumble(self):
         tracker = Tracker()
