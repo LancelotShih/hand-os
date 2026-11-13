@@ -4,14 +4,15 @@ Positions are in cm from the coil's center, which is 0, in the home axes: the
 ICM's own x, y, z while it sat at home.  *Home* is where the ICM sits on its tape
 mark, given by the user as a position from the coil, e.g. (15, 0, 0).
 
-With the coil always on, Earth is captured at home, so the capture also holds the
+The uniform ambient field includes Earth plus any steady background. With the
+coil on, the reference field is captured at home and also holds the
 coil's field there.  The ICM's error is then
 
     error = B(p) - B(home)
 
 The coil is two iron cores wound as one bundle, about 5 cm long, and the board
-works within 15 cm of it.  That's too close to treat the coil as a point, so it's
-modelled as a bar magnet: a north pole and a south pole, one at each end.
+works within 15 cm of it. A finite bar magnet (two effective poles) is used instead
+of a point approximation. Physical accuracy of this model needs independent data.
 
     B(p) = q (p - a) / |p - a|^3  -  q (p - b) / |p - b|^3
     a, b = center +- half_length * axis
@@ -236,9 +237,9 @@ def _refine(points, home, x0, slack_cm=LOCATE_CENTER_SLACK_CM, iterations=200):
 def fit_coil(points, home, slack_cm=LOCATE_CENTER_SLACK_CM, grid_cm=LOCATE_CENTER_GRID_CM):
     """The coil that best explains ``points``: ``[(position, error), ...]``,
     positions in cm from the coil's center, errors in uT, both in the home axes.
-    ``home`` is where Earth was captured, in cm from the coil's center."""
+    ``home`` is where the reference field was captured, in cm from the coil's center."""
     if len(points) < LOCATE_MIN_POINTS:
-        raise ValueError(f"need at least {LOCATE_MIN_POINTS} points, have {len(points)}")
+        raise ValueError(f"A coil model needs at least {LOCATE_MIN_POINTS} position-and-field measurements; {len(points)} are available.")
     best = None
     for _, c, moment in _coarse_search(points, home, slack_cm, grid_cm):
         half = 2.0
@@ -246,7 +247,7 @@ def fit_coil(points, home, slack_cm=LOCATE_CENTER_SLACK_CM, grid_cm=LOCATE_CENTE
         if best is None or cost < best[1]:
             best = (coil, cost)
     if best is None:
-        raise ValueError("couldn't place the coil: spread the points out more, and keep them 3 cm clear of it")
+        raise ValueError("Could not calculate a coil model. Spread the measured positions through the working area and keep the sensor at least 3 cm from the coil.")
     return best[0]
 
 
@@ -271,7 +272,9 @@ def _settle(coil, target, start):
 def solve(coil, error, start, home_field):
     """``(position, mismatch_ut)`` for one error vector, searching from ``start``.
     ``home_field`` is the coil's field at home.  ``mismatch_ut`` is how far the
-    coil's field at the answer is from what was measured."""
+    coil's field at the answer is from what was measured. The nearer mirror is
+    chosen from start; this is a movement-history assumption, not a unique fix.
+    Local sensitivity does not detect the separate mirrored solution."""
     target = add(error, home_field)
     p, miss = _settle(coil, target, start)
     if miss > LOCATE_MAX_MISMATCH_UT or norm(sub(p, coil.center)) > 3 * LOCATE_RANGE_CM:
@@ -285,9 +288,9 @@ def solve(coil, error, start, home_field):
 
 def mm_per_ut(coil, p):
     """How far off a position can be, in mm, for each uT of field error, in the
-    worst direction.  The coil's field is the same all round its long axis, so
-    beside the coil's middle this grows without limit: moving round the coil
-    there barely changes the field."""
+    worst direction. In the plane through the coil's middle, the model's vector
+    field is the same around each circle centered on its axis. Sensitivity grows
+    without limit there; this does not detect the distant mirror solution."""
     j = []
     for k in range(3):
         d = [0.0, 0.0, 0.0]
@@ -317,8 +320,9 @@ def check_points(coil, points, home):
 
 
 def left_out_check(coil, points, home):
-    """The honest check: each point refitted without it, then solved.  ``None``
-    for each when there are too few points to leave one out."""
+    """Local leave-one-out consistency: refine from the all-points model without
+    each point, then solve starting at its known position. This is not an
+    independent global accuracy test. None when too few points remain."""
     if len(points) <= LOCATE_MIN_POINTS:
         return [None] * len(points)
     out = []
@@ -340,7 +344,9 @@ def _vector(position, what):
 
 class Locator:
     """Fed the ICM's samples in the sensor loop; the other methods are for the
-    HTTP threads.  Fitting runs on its own thread, so the loop never waits."""
+    HTTP threads. Fitting runs on worker threads outside the state lock. Live
+    solving is synchronous on the sensor loop; shared locks and Python execution
+    time can still delay acquisition."""
 
     def __init__(self, path=None):
         self._lock = threading.Lock()
@@ -357,7 +363,7 @@ class Locator:
         self._home_field = None
         self._capture = None          # (position, [errors])
         self._last = None
-        self._earth = None
+        self._reference_field = None
         self._load()
 
     # -- sensor loop -----------------------------------------------------------
@@ -367,20 +373,21 @@ class Locator:
         error = sample.get("error")
         with self._lock:
             if error is None:
-                return {"position": None, "why": "no capture at sensor home yet"}
+                return {"position": None, "why": "No corrected reference field is available. Check sensor calibration and measure the reference field at sensor home."}
             if self.home is None:
-                return {"position": None, "why": "sensor home not set"}
-            if sample.get("predicted") != self._earth:      # captured again: back at home
-                self._earth = sample.get("predicted")
+                return {"position": None, "why": "Sensor-home coordinates are not saved. Enter and save them before tracking position."}
+            # "predicted" is the legacy sample key for the captured reference_field.
+            if sample.get("predicted") != self._reference_field:      # captured again: back at home
+                self._reference_field = sample.get("predicted")
                 self._last = self.home
             if self._capture is not None:
                 self._capture_step(error)
             coil, start, home, home_field = self.coil, self._last or self.home, self.home, self._home_field
         if coil is None:
-            return {"position": None, "why": "not calibrated"}
+            return {"position": None, "why": "No coil model is available. Record fields at measured positions to calibrate the coil model."}
         p, miss = solve(coil, error, start, home_field)
         if miss > LOCATE_MAX_MISMATCH_UT:
-            return {"position": None, "why": f"no place fits this field (off by {miss:.1f} µT)"}
+            return {"position": None, "why": f"No position matches the measured field within the allowed tolerance. The best field match found differs by {miss:.1f} µT."}
         with self._lock:
             self._last = p
         return {"position": [round(v, 2) for v in p],
@@ -399,7 +406,7 @@ class Locator:
         mean = tuple(sum(e[i] for e in errors) / n for i in range(3))
         spread = max(norm(sub(e, mean)) for e in errors)
         if spread > LOCATE_POINT_MAX_SPREAD_UT:
-            self.message = (f"Point not kept: the reading moved {spread:.1f} µT while capturing. "
+            self.message = (f"Measurement not saved: the magnetic field varied by {spread:.1f} µT during recording. "
                             "Hold the board still and try again.")
             return
         self.points.append((p, mean, round(spread, 2)))
@@ -416,7 +423,7 @@ class Locator:
             raise ValueError(f"the sensor home can't be within {KEEP_CLEAR_CM:.0f} cm of the coil's center")
         with self._lock:
             if self._capture is not None:
-                raise ValueError("wait for the point capture to finish")
+                raise ValueError("Wait for the current field recording to finish, or cancel it.")
             if self._from_home:
                 self.points = [(add(p, h), e, s) for p, e, s in self.points]
                 self._from_home, self._old_coil = False, None
@@ -429,9 +436,9 @@ class Locator:
         p = _vector(position, "the point")
         with self._lock:
             if self.home is None:
-                raise ValueError("set the sensor home first")
+                raise ValueError("Enter and save the sensor-home coordinates first.")
             if self._capture is not None:
-                raise ValueError("already capturing a point")
+                raise ValueError("A field recording is already in progress. Wait for it to finish or cancel it.")
             self._capture = (p, [])
             self.message = None
 
@@ -442,7 +449,7 @@ class Locator:
     def remove_point(self, index):
         with self._lock:
             if not 0 <= index < len(self.points):
-                raise ValueError("no such point")
+                raise ValueError("The selected coil-calibration measurement no longer exists.")
             del self.points[index]
             self._start_fit()
 
@@ -472,7 +479,7 @@ class Locator:
             checks = list(zip(check_points(coil, points, home), left_out_check(coil, points, home)))
             message = None
         except ValueError as e:
-            coil, checks, message = None, [], f"Fit failed: {e}"
+            coil, checks, message = None, [], f"Could not calculate the coil model: {e}"
         with self._lock:
             if [(p, e) for p, e, _ in self.points] != points or self.home != home:   # changed while fitting
                 return

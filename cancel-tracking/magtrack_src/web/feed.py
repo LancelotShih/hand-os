@@ -8,7 +8,11 @@ from collections import deque
 
 
 class Feed:
-    """Latest samples; each tab resumes from its own ``seq``."""
+    """Latest samples; each open stream advances its own sequence cursor.
+
+    A new stream starts at zero and replays the retained buffer. Connection/error
+    attributes are independent of the buffer lock.
+    """
 
     def __init__(self):
         self._buf = deque(maxlen=200)

@@ -1,4 +1,4 @@
-# hardware
+# Sensor drivers and acquisition
 
 The only code that talks to the chips over I2C (needs `smbus2`).
 
@@ -13,3 +13,16 @@ The only code that talks to the chips over I2C (needs `smbus2`).
 - **Settings:** `I2C_*`, `MMC_I2C_ADDRESS`, `MMC_BANDWIDTH_HZ` in `config.py`.
 - **Tests:** `tests/test_imu.py` (fake bus). The loops are exercised in `test_server.py` and `test_pair.py`.
 - **Watch out:** the axis map in `mag_to_body` is `(x, -y, -z)`, from the datasheet. Don't change it to the MPU-9250's `(y, x, -z)`.
+
+The ICM loop timestamps after reading the registers. It does not use hardware
+sample timestamps or a fixed scheduler. Magnetic latency is estimated later in
+tracking. MMC time is the midpoint of SET/RESET measurement completions.
+
+The MMC reader has one latest-unread slot, not a queue: unconsumed readings can
+be overwritten, including before logging. Both drivers share a bus through
+separate handles/threads; transaction serialization does not guarantee bandwidth
+or sample-time alignment. MMC operation is optional and off by default.
+
+Reconnect waits two seconds after `OSError`. ICM reopening notifies the pair;
+MMC-only reopening does not reset the tracker/cached view. See
+[architecture.md](../../docs/architecture.md) for state retained after outages.

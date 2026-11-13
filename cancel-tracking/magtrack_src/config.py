@@ -1,4 +1,7 @@
-"""Every setting in one place.  Adjust freely.
+"""Operational settings and paths.
+
+Algorithm bounds and visualization constants also exist in their own modules;
+changing a setting does not validate the physical assumptions behind it.
 
 Read by every package; nothing else lives here.
 """
@@ -45,22 +48,22 @@ RATE_WINDOW_S = 1.0       # each magnetometer's readings per second is counted o
 BLOCK_SAMPLES = 5         # magnetometer samples per view update (100 Hz -> 20 Hz)
 MMC_BLOCK_SAMPLES = 3     # the same for the MMC5983MA: about the same 50 ms, so the two
                           # are averaged over equal time and neither gets an easier test
-PASS_UT = 5.0             # the field accuracy we want: green under this, everywhere
-PASS_MIN_TURN_DEG = 30.0  # a error only proves much once the board has turned this far
+PASS_UT = 5.0             # field-comparison and calibration-consistency threshold, uT; not position accuracy
+PASS_MIN_TURN_DEG = 30.0  # minimum board rotation from the reference orientation for coil-off comparison scores
 
 # tumble
 TUMBLE_MIN_POINTS = 500   # magnetometer samples needed, about 6 s
 TUMBLE_MAX_POINTS = 12000 # about 2 minutes; past this the readings are thinned
 TUMBLE_MIN_COVERAGE = 0.75    # share of directions reached before Finish is allowed
 TUMBLE_COVERAGE_RECOUNT = 25  # samples between coverage updates
-TUMBLE_MAX_GAIN = 1.4     # a stretch beyond this isn't the sensor
+TUMBLE_MAX_GAIN = 1.4     # largest allowed axis scale multiplier and reciprocal lower bound
 TUMBLE_MIN_SWING_UT = 20.0    # every direction must swing at least this far either way;
                               # Earth's field is 25-65 uT, so noise on a still board can't
 TUMBLE_MIN_SWING_RATIO = 0.8  # ... and the smallest swing at least this share of the largest:
                               # a partial turn looks centred, but its swings don't match
-TUMBLE_MAX_FIELD_UT = 100.0   # a field stronger than this isn't Earth's
+TUMBLE_MAX_FIELD_UT = 100.0   # upper plausible ambient-field strength for this calibration
 
-# position: the coil stays on, and Earth is captured with the board on its home mark.
+# position: the coil stays on; reference_field includes ambient + coil field at home.
 # Positions are cm from the coil's center (0), in the ICM's axes as it sat at home.
 LOCATE_RANGE_CM = 15.0    # the board works within this of the coil; the page draws this cube
 LOCATE_MIN_POINTS = 4     # calibration points needed before positions appear

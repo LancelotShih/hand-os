@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cancel Earth's field at every angle from one measurement, and track the
+"""Subtract a captured reference field at every angle, and track the
 ICM-20948 around the coil.  With --mmc, an MMC5983MA runs beside it doing the
 same job, so the two magnetometers can be compared.
 
@@ -11,7 +11,7 @@ First run: rest the board for a second, click "Tumble", follow the steps.
 Position: start with the board on its home mark and the coil on, then add
 calibration points on the page.
 After a log made with --mmc: python3 -m magtrack_src.recording.compare data/logs/<name>
-See README.md for how it works and where everything lives.
+See docs/architecture.md for setup, operation, and how it works.
 """
 
 import argparse
@@ -75,8 +75,8 @@ def main(argv=None):
         mmc_th.start()
 
     ip = local_ip() if args.host in ("0.0.0.0", "::") else args.host
-    print(f"Earth cancel:  http://{ip}:{args.port}   (Ctrl+C to stop)")
-    print("rest the board for a second if you can: that measures the gyro bias")
+    print(f"Magnetic field and position tracking:  http://{ip}:{args.port}   (Ctrl+C to stop)")
+    print("Rest the board for about a second to estimate the gyroscope readings when it is not turning.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

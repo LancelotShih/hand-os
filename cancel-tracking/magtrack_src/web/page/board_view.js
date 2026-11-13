@@ -9,7 +9,7 @@ let dragFrom = null;
 
 function setTips(on) {
   camera.tips = on;
-  $("tips").textContent = on ? "Show whole view" : "Zoom to tips";
+  $("tips").textContent = on ? "Show board and field arrows" : "Zoom to field arrow tips";
 }
 
 function resetView() {

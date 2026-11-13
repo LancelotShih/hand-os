@@ -1,9 +1,9 @@
 """Records a run to its own folder, named by the time it started.
 
     logs/2026-10-30_23-15-02/
-        raw.csv        every sensor reading, both magnetometers as they came
+        raw.csv        every ICM step and consumed MMC readings, before correction
         samples.csv    what the view showed: orientation, field, error, position
-        info.json      the calibration in use
+        info.json      tracker/locator status at start, not a full event history
         plot.html      the visual, written when the log stops
 
 Used by: earth_cancel.py, hardware/icm_loop.py, web/server.py.  Uses: recording/log_plot.py.
@@ -20,7 +20,7 @@ from magtrack_src.recording.log_plot import SAMPLE_COLUMNS, write_plot
 RAW_COLUMNS = ["t_s", "ax_g", "ay_g", "az_g", "gx_dps", "gy_dps", "gz_dps",
                "mx_ut", "my_ut", "mz_ut",
                "mmc_x_ut", "mmc_y_ut", "mmc_z_ut", "mmc_age_s"]
-FLUSH_S = 1.0             # a crash loses at most this much
+FLUSH_S = 1.0             # flush Python file buffers; not a power-loss durability guarantee
 
 
 def _cells(values):
@@ -66,7 +66,7 @@ class DataLog:
     def start(self, info=None):
         with self._lock:
             if self._folder is not None:
-                raise ValueError("already logging")
+                raise ValueError("A recording is already in progress.")
             folder = self._new_folder()
             (folder / "info.json").write_text(json.dumps(
                 {"started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **(info or {})}, indent=2))
@@ -101,7 +101,7 @@ class DataLog:
                     self._raw_file.flush()
                     self._samples_file.flush()
             except (OSError, ValueError) as e:
-                self._error = f"log stopped: {e}"
+                self._error = f"Recording stopped because a file could not be written: {e}"
                 self._close()
 
     def _close(self):
@@ -112,19 +112,19 @@ class DataLog:
             try:
                 f.close()
             except OSError as e:
-                self._error = f"log may be incomplete: {e}"
+                self._error = f"The recording may be incomplete because a file could not be closed: {e}"
         return folder
 
     def stop(self):
         with self._lock:
             if self._folder is None:
-                raise ValueError("not logging")
+                raise ValueError("No recording is active.")
             folder = self._close()
         try:
             write_plot(folder)
         except (OSError, ValueError) as e:
             with self._lock:
-                self._error = f"couldn't draw the plot: {e}"
+                self._error = f"The recording was saved, but its plots could not be generated: {e}"
         return folder.name
 
     def status(self):

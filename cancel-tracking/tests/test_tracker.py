@@ -1,9 +1,10 @@
 import random
 import unittest
+from unittest.mock import patch
 
 from magtrack_src.config import PASS_UT
-from magtrack_src.geometry.vectors import norm, quat_conj, quat_rotate, sub
-from tests.sim.sim_board import EARTH, GYRO_BIAS, OFFSET, SimBoard, axis_quat
+from magtrack_src.geometry.vectors import add, norm, quat_conj, quat_rotate, sub
+from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard, axis_quat
 from magtrack_src.tracking.tracker import Tracker
 
 BIG_TURNS = (((1, 0, 0), 170), ((0, 1, 0), 140), ((0, 0, 1), 200), ((1, 1, 0), -160))
@@ -29,8 +30,8 @@ class Cancelling(unittest.TestCase):
     def test_one_reading_with_a_saved_offset(self):
         board = SimBoard(Tracker(offset=OFFSET, bias=GYRO_BIAS), q=axis_quat((1, -1, 0), 50))
         board.still(.5)
-        expected = quat_rotate(quat_conj(board.q), EARTH)
-        self.assertLess(norm(sub(board.tracker.earth, expected)), 1)
+        expected = quat_rotate(quat_conj(board.q), AMBIENT_FIELD)
+        self.assertLess(norm(sub(board.tracker.reference_field, expected)), 1)
         self.assertLess(self.worst_error(board), 2)
 
     def test_without_the_offset_it_fails(self):
@@ -38,13 +39,28 @@ class Cancelling(unittest.TestCase):
         board.still(.5)
         self.assertGreater(self.worst_error(board), 100)
 
+    def test_uniform_extra_background_is_cancelled_after_turning(self):
+        ambient_field = add(AMBIENT_FIELD, (8.0, -3.0, 5.0))
+        with patch("tests.sim.sim_board.AMBIENT_FIELD", ambient_field):
+            tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
+            board = SimBoard(tracker)
+            board.still(.5)
+            self.assertLess(norm(sub(tracker.reference_field, ambient_field)), 1.0)
+            self.assertLess(self.worst_error(board), 2.0)
+            reference_field = [round(v, 2) for v in tracker.reference_field]
+            # Existing clients/logs retain these historical output names.
+            self.assertEqual(tracker.status()["earth"], reference_field)
+            self.assertEqual(board.samples[-1]["predicted"], reference_field)
+            tracker.capture_reference_field()
+            self.assertEqual(tracker.status()["capturing"], "earth")
+
     def test_switching_calibration_off_shows_the_offset_and_back_again(self):
         tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
         board = SimBoard(tracker)
         board.still(.5)
         self.assertLess(self.worst_error(board), 2)
         tracker.set_calibration(False)
-        self.assertIsNone(tracker.earth)
+        self.assertIsNone(tracker.reference_field)
         self.assertEqual(tracker.status()["capturing"], "earth")
         board.still(.5)
         self.assertFalse(tracker.status()["calibration_on"])
@@ -55,10 +71,10 @@ class Cancelling(unittest.TestCase):
         board.still(.5)
         self.assertLess(self.worst_error(board), 2)
 
-    def test_no_tumble_is_needed_to_get_an_earth_with_calibration_off(self):
+    def test_no_tumble_is_needed_to_capture_reference_with_calibration_off(self):
         tracker = Tracker(bias=GYRO_BIAS, use_calibration=False)
         SimBoard(tracker).still(.5)
-        self.assertIsNotNone(tracker.earth)
+        self.assertIsNotNone(tracker.reference_field)
 
 
 class Capturing(unittest.TestCase):
@@ -99,7 +115,7 @@ class SensorLoss(unittest.TestCase):
         self.tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
         self.board = SimBoard(self.tracker)
         self.board.still(1.0)                         # captured here: this is home
-        self.earth = self.tracker.earth
+        self.reference_field = self.tracker.reference_field
 
     def gap(self, q):
         """Disconnected for 3 s, during which the board ends up at ``q``."""
@@ -116,7 +132,7 @@ class SensorLoss(unittest.TestCase):
         self.gap(self.board.q)
         status = self.tracker.status()
         self.assertIsNone(status["capturing"])
-        self.assertEqual(self.tracker.earth, self.earth)
+        self.assertEqual(self.tracker.reference_field, self.reference_field)
         self.assertTrue(status["have_offset"])
         self.assertIn("reconnected", self.tracker.message)
         self.assertLess(self.first_error_after(), PASS_UT)
@@ -132,12 +148,12 @@ class SensorLoss(unittest.TestCase):
         self.gap(axis_quat((0, 0, 1), 40))             # turned flat on the table: can't be seen
         self.assertGreater(self.first_error_after(), PASS_UT)
         self.board.q = axis_quat((0, 0, 1), 0)          # back on home, squared up, and captured
-        self.tracker.capture_earth()
+        self.tracker.capture_reference_field()
         self.board.still(1.0)
         self.assertLess(self.board.samples[-1]["error_ut"], PASS_UT)
 
     def test_a_capture_cut_off_by_the_gap_starts_over(self):
-        self.tracker.capture_earth()
+        self.tracker.capture_reference_field()
         self.board.still(0.1)
         self.gap(self.board.q)
         self.assertEqual(self.tracker.status()["capturing"], "earth")

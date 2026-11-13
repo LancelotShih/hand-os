@@ -1,7 +1,13 @@
-"""One capture: a short average of the magnetometer at a roughly held pose.
+"""Capture a reference field and orientation at a roughly held pose.
 
-The board needn't be still.  A wobble averages out over the window, and the
-pose from the middle of the window matches the averaged reading.
+This averages gain-scaled sensor readings. Tracker then applies the offset and
+mounting corrections to store the total reference field. With the coil off,
+that is the assumed uniform ambient field (Earth plus other uniform, steady
+contributions). With the coil on, it also includes the coil field at capture.
+
+Readings are averaged in sensor axes and paired with the middle sample's pose.
+This approximates a held pose; permitted wobble does not generally cancel
+exactly. Live tracking uses measurement-time rotations, but this capture does not.
 
 Used by: tracking/tracker.py.  Uses: geometry, config.
 """
@@ -10,7 +16,7 @@ from magtrack_src.config import CAPTURE_MAX_TURN_DEG, CAPTURE_MIN_MAG, CAPTURE_S
 from magtrack_src.geometry.vectors import add, quat_angle_deg, quat_conj, quat_mul
 
 
-class Capture:
+class ReferenceCapture:
     def __init__(self):
         self.start = None
         self._q_start = None
@@ -18,7 +24,7 @@ class Capture:
         self._qs = []
 
     def add(self, q, mag, now):
-        """One reading.  Returns ``(u, q)`` once finished, otherwise ``None``."""
+        """Return the average gain-scaled reading and pose once finished, else None."""
         if self.start is None:
             self.start, self._q_start = now, q
         if quat_angle_deg(quat_mul(quat_conj(self._q_start), q)) > CAPTURE_MAX_TURN_DEG:

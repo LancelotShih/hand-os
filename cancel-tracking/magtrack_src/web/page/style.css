@@ -37,8 +37,8 @@ canvas { display:block; width:100%; }
 .big { font-size:32px; font-weight:600; font-variant-numeric:tabular-nums; }
 .verdict { color:var(--dim); margin-bottom:8px; }
 .good { color:var(--good); } .bad { color:var(--bad); }
-dl { display:grid; grid-template-columns:auto 1fr; gap:2px 14px; margin:0; }
-dt { color:var(--dim); } dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+dl { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:2px 14px; margin:0; }
+dt { color:var(--dim); overflow-wrap:anywhere; } dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
 .legend { display:flex; flex-wrap:wrap; gap:14px; color:var(--dim); font-size:13px; }
 .legend i { display:inline-block; width:14px; height:3px; margin-right:5px; vertical-align:middle; }
 .info { width:18px; height:18px; padding:0; margin-left:4px; border-radius:50%; font:italic 600 12px/16px Georgia,serif;
@@ -48,7 +48,7 @@ dt { color:var(--dim); } dd { margin:0; text-align:right; font-variant-numeric:t
 .resultverdict { display:inline; }
 .verdict { display:inline; }
 #tumblecard, .tumble, .result { display:none; }
-.shared dl { grid-template-columns:auto 1fr auto 1fr; margin-top:8px; }
+.shared dl { grid-template-columns:minmax(0,3fr) minmax(0,2fr) minmax(0,3fr) minmax(0,2fr); margin-top:8px; }
 #tumblecard p, .tumble p { margin:6px 0; }
 .sweep { aspect-ratio:1; max-width:420px; margin:8px auto; cursor:grab; touch-action:none; }
 .sweep:active { cursor:grabbing; }
@@ -67,14 +67,15 @@ th:first-child, td:first-child { text-align:left; }
 #sides.single .side { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
 #sides.single .side > .card:not(.viewcard):not(.chartcard) { grid-column:1 / -1; }
 @media (max-width:820px) { #sides, #sides.single .side { grid-template-columns:minmax(0,1fr); }
-                           .shared dl { grid-template-columns:auto 1fr; } }
+                           .shared dl { grid-template-columns:minmax(0,3fr) minmax(0,2fr); } }
 #poscard h2 { display:inline; font-size:17px; margin:0; }
 #poscard h3 { font-size:15px; margin:14px 0 6px; }
 .hint { color:var(--dim); font-size:13px; }
 .posgrid { display:grid; gap:16px; grid-template-columns:minmax(0,3fr) minmax(0,2fr); margin-top:8px; }
 #posview { aspect-ratio:4/3; cursor:grab; touch-action:none; margin-bottom:8px; }
 #posview:active { cursor:grabbing; }
-#posxyz { font-size:24px; margin-bottom:6px; white-space:pre; }
+#posxyz { font-size:24px; margin-bottom:6px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.readoutlabel { color:var(--dim); margin-bottom:4px; }
 .calentry { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:6px; }
 .calentry input { width:5.5em; font:inherit; padding:5px 6px; border:1px solid var(--line); border-radius:6px;
                   background:var(--bg); color:var(--ink); }
@@ -85,3 +86,6 @@ button.remove { padding:0 8px; }
 #posfield { font:inherit; font-size:13px; padding:5px 6px; border:1px solid var(--line); border-radius:6px;
             background:var(--card); color:var(--ink); }
 @media (max-width:820px) { .posgrid { grid-template-columns:minmax(0,1fr); } }
+
+.table-scroll { max-width:100%; overflow-x:auto; }
+.table-scroll table { min-width:600px; }
