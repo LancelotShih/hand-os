@@ -86,6 +86,10 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=HYVYXJIY
 
+[GeneratedDocument1]
+DocumentPath=Project Outputs for Capstone_Test_PCB\Design Rule Check - PCB1.html
+DItemRevisionGUID=
+
 [Configuration1]
 Name=Sources
 ParameterCount=0

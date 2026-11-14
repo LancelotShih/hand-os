@@ -1,0 +1,8 @@
+Removed Pin From Net: NetName=MAG2_IMU_SCL Pin=AC1-13
+Removed Pin From Net: NetName=MAG2_IMU_SDA Pin=AC1-14
+Added Pin To Net: NetName=MAG1_SCL Pin=AC1-13
+Added Pin To Net: NetName=MAG1_SDA Pin=AC1-14
+Change Net Name : Old Net Name=MAG1_SCL New Net Name=MAG1_IMU_SCL
+Change Net Name : Old Net Name=MAG1_SDA New Net Name=MAG1_IMU_SDA
+Change Net Name : Old Net Name=MAG2_IMU_SCL New Net Name=MAG2_SCL
+Change Net Name : Old Net Name=MAG2_IMU_SDA New Net Name=MAG2_SDA
