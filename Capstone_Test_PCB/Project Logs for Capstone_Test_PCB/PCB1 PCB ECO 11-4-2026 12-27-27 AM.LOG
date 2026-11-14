@@ -1,0 +1,113 @@
+Removed Pin From Net: NetName=GND Pin=C2-1
+Removed Pin From Net: NetName=NetAC1_11 Pin=C3-1
+Removed Pin From Net: NetName=3V3 Pin=C4-1
+Removed Pin From Net: NetName=GND Pin=C4-2
+Removed Pin From Net: NetName=3V3 Pin=C5-1
+Removed Pin From Net: NetName=GND Pin=C5-2
+Removed Pin From Net: NetName=GND Pin=C8-1
+Change Component Footprint: Designator=C6 Old Footprint=CAPC1608X87X35NL15T15 New Footprint=CAPC1005X56X25NL10T15
+Change Component Footprint: Designator=C2 Old Footprint=CAPC2012X140N New Footprint=FP-GRM155-0_2-IPC_A
+Change Component Footprint: Designator=C8 Old Footprint=CAPC2012X140N New Footprint=FP-GRM155-0_2-IPC_A
+Change Component Footprint: Designator=C4 Old Footprint=FP-CC0805-0_85-MFG New Footprint=CAPC1005X56X25LL10T15
+Change Component Footprint: Designator=C3 Old Footprint=FP-CC0805-0_85-MFG New Footprint=FP-0402-L_1_0_0_10-W_0_5-MFG
+Change Component Footprint: Designator=C5 Old Footprint=FP-GRM188-0_1-e0_2_0_5-IPC_A New Footprint=CAPC1005X56X25LL10T15
+Change Component Footprint: Designator=C1 Old Footprint=FP-GRM188-0_1-e0_2_0_5-IPC_A New Footprint=FP-0402-L_1_0_0_10-W_0_5-MFG
+Change Component Footprint: Designator=C7 Old Footprint=FP-GRM188-0_1-e0_2_0_5-IPC_A New Footprint=FP-0402-L_1_0_0_10-W_0_5-MFG
+Change Component Comment : Designator=C5 Old Comment=2.2uF New Comment=100 nF
+Change Component Comment : Designator=C6 Old Comment=10nF New Comment=10 nF
+Change Component Comment : Designator=C2 Old Comment=10uF New Comment=GRM155R61A106ME11D
+Change Component Comment : Designator=C8 Old Comment=10uF New Comment=GRM155R61A106ME11D
+Change Component Comment : Designator=C3 Old Comment=CC0805KRX7R9BB104 New Comment=2.2uF
+Change Component Comment : Designator=C4 Old Comment=CC0805KRX7R9BB104 New Comment=100 nF
+Change Managed Component Library Link : Designator=C1 Old VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID=8C61C54B-8B93-4369-A940-2A3F254D918B New ItemGUID=CF3814B7-B3A0-4040-8A20-9F93733D5669 Old RevisionGUID=44952245-4FB2-48CD-815B-5CF2F223EA5D New RevisionGUID=88713C0B-D62D-4AB5-9BC1-9B6634E73CA6
+Change Managed Component Library Link : Designator=C3 Old VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID=BAF7B4F8-FD1F-48C1-8592-367B8BFC0DFE New ItemGUID=CF3814B7-B3A0-4040-8A20-9F93733D5669 Old RevisionGUID=1AEF890B-4B04-4A58-8502-00DDA6F4B74D New RevisionGUID=88713C0B-D62D-4AB5-9BC1-9B6634E73CA6
+Change Managed Component Library Link : Designator=C4 Old VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID=BAF7B4F8-FD1F-48C1-8592-367B8BFC0DFE New ItemGUID=2C48D662-1A9E-48D9-8664-1CD1945FA055 Old RevisionGUID=1AEF890B-4B04-4A58-8502-00DDA6F4B74D New RevisionGUID=4AC5DC8A-09BC-42E8-9984-15D1B8D0BC3D
+Change Managed Component Library Link : Designator=C5 Old VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID=8C61C54B-8B93-4369-A940-2A3F254D918B New ItemGUID=2C48D662-1A9E-48D9-8664-1CD1945FA055 Old RevisionGUID=44952245-4FB2-48CD-815B-5CF2F223EA5D New RevisionGUID=4AC5DC8A-09BC-42E8-9984-15D1B8D0BC3D
+Change Managed Component Library Link : Designator=C6 Old VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID=D07A7255-9798-4015-9213-98C22963AB71 New ItemGUID=19B6DC4D-CD2A-49D0-8CAD-43F00CA6EBF5 Old RevisionGUID=CD95CE97-E36B-4DB3-9AA8-525A1192FE85 New RevisionGUID=BFF5ACE5-5B25-4152-B5A6-DBFB1850F5DE
+Change Managed Component Library Link : Designator=C7 Old VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID=8C61C54B-8B93-4369-A940-2A3F254D918B New ItemGUID=CF3814B7-B3A0-4040-8A20-9F93733D5669 Old RevisionGUID=44952245-4FB2-48CD-815B-5CF2F223EA5D New RevisionGUID=88713C0B-D62D-4AB5-9BC1-9B6634E73CA6
+Change Managed Component Library Link : Designator=C2 Old VaultGUID= New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID= New ItemGUID=7DF15F4F-4401-4AE7-9611-297F2C808676 Old RevisionGUID= New RevisionGUID=4F591DAC-B3FC-4B4F-A794-8AD321C3BD2C
+Change Managed Component Library Link : Designator=C8 Old VaultGUID= New VaultGUID=B7D15EC3-160A-466F-A46C-7801FE6295A7 Old ItemGUID= New ItemGUID=7DF15F4F-4401-4AE7-9611-297F2C808676 Old RevisionGUID= New RevisionGUID=4F591DAC-B3FC-4B4F-A794-8AD321C3BD2C
+Change component parameters: Designator = "C6" ("C6"); Footprint = "CAPC1608X87X35NL15T15"; UniqueID = "\DNIYLLNM" ("\DNIYLLNM")
+Change component parameters (AddParameter): Name = "Manufacturer"; Value = "AVX Interconnect / Elco"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Part Number"; Value = "0402ZD103KAT2A"; VariantName = "[No Variations]"
+Change component parameters: Designator = "C2" ("C2"); Footprint = "CAPC2012X140N"; UniqueID = "\XEIKUASC" ("\XEIKUASC")
+Change component parameters: Designator = "C8" ("C8"); Footprint = "CAPC2012X140N"; UniqueID = "\QSCNPGYW" ("\QSCNPGYW")
+Change component parameters: Designator = "C1" ("C1"); Footprint = "FP-GRM188-0_1-e0_2_0_5-IPC_A"; UniqueID = "\NZKPBDMM" ("\NZKPBDMM")
+Change component parameters (AddParameter): Name = "Capacitance"; Value = "2.2uF"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case Code (Imperial)"; Value = "0402"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case Code (Metric)"; Value = "1005"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case/Package"; Value = "0402"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Halogen Free"; Value = "Halogen Free"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Lead Free"; Value = "Lead Free"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Length"; Value = "0.039inch"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Max Operating Temperature"; Value = "85°C"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Min Operating Temperature"; Value = "-55°C"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Mount"; Value = "Surface Mount"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Packaging"; Value = "Tape and Reel"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Ratings"; Value = "AEC-Q200"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "RoHS Compliant"; Value = "Yes"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Thickness"; Value = "0.024inch"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Tolerance"; Value = "20%"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Voltage Rating"; Value = "10V"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Voltage Rating (DC)"; Value = "10V"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Width"; Value = "0.02inch"; VariantName = "[No Variations]"
+Change component parameters: Designator = "C7" ("C7"); Footprint = "FP-GRM188-0_1-e0_2_0_5-IPC_A"; UniqueID = "\DEUUAZKY" ("\DEUUAZKY")
+Change component parameters (AddParameter): Name = "Capacitance"; Value = "2.2uF"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case Code (Imperial)"; Value = "0402"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case Code (Metric)"; Value = "1005"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case/Package"; Value = "0402"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Halogen Free"; Value = "Halogen Free"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Lead Free"; Value = "Lead Free"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Length"; Value = "0.039inch"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Max Operating Temperature"; Value = "85°C"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Min Operating Temperature"; Value = "-55°C"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Mount"; Value = "Surface Mount"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Packaging"; Value = "Tape and Reel"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Ratings"; Value = "AEC-Q200"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "RoHS Compliant"; Value = "Yes"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Thickness"; Value = "0.024inch"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Tolerance"; Value = "20%"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Voltage Rating"; Value = "10V"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Voltage Rating (DC)"; Value = "10V"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Width"; Value = "0.02inch"; VariantName = "[No Variations]"
+Change component parameters: Designator = "C5" ("C5"); Footprint = "FP-GRM188-0_1-e0_2_0_5-IPC_A"; UniqueID = "\LROLHFCB" ("\LROLHFCB")
+Change component parameters (AddParameter): Name = "Manufacturer"; Value = "AVX Interconnect / Elco"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Part Number"; Value = "04023C104JAT2A"; VariantName = "[No Variations]"
+Change component parameters: Designator = "C4" ("C4"); Footprint = "FP-CC0805-0_85-MFG"; UniqueID = "\IPHSITCW" ("\IPHSITCW")
+Change component parameters (AddParameter): Name = "Manufacturer"; Value = "AVX Interconnect / Elco"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Part Number"; Value = "04023C104JAT2A"; VariantName = "[No Variations]"
+Change component parameters: Designator = "C3" ("C3"); Footprint = "FP-CC0805-0_85-MFG"; UniqueID = "\IFRCZSMH" ("\IFRCZSMH")
+Change component parameters (AddParameter): Name = "Capacitance"; Value = "2.2uF"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case Code (Imperial)"; Value = "0402"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case Code (Metric)"; Value = "1005"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Case/Package"; Value = "0402"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Halogen Free"; Value = "Halogen Free"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Lead Free"; Value = "Lead Free"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Length"; Value = "0.039inch"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Max Operating Temperature"; Value = "85°C"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Min Operating Temperature"; Value = "-55°C"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Mount"; Value = "Surface Mount"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Packaging"; Value = "Tape and Reel"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Ratings"; Value = "AEC-Q200"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "RoHS Compliant"; Value = "Yes"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Thickness"; Value = "0.024inch"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Tolerance"; Value = "20%"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Voltage Rating"; Value = "10V"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Voltage Rating (DC)"; Value = "10V"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Width"; Value = "0.02inch"; VariantName = "[No Variations]"
+Added Pin To Net: NetName=GND Pin=C2-2
+Added Pin To Net: NetName=3V3 Pin=C3-1
+Added Pin To Net: NetName=GND Pin=C4-1
+Added Pin To Net: NetName=NetAC1_11 Pin=C4-2
+Added Pin To Net: NetName=GND Pin=C5-1
+Added Pin To Net: NetName=3V3 Pin=C5-2
+Added Pin To Net: NetName=GND Pin=C8-2
+Added Pin To Net: NetName=NetC2_1 Pin=C2-1
+Added Pin To Net: NetName=NetC2_1 Pin=IC1-10
+Added Net: Name=NetC2_1
+Added Pin To Net: NetName=NetC8_1 Pin=C8-1
+Added Pin To Net: NetName=NetC8_1 Pin=IC2-10
+Added Net: Name=NetC8_1
+Added Member To Class: ClassName=ICM_Mag Member=Component C6 10 nF
+Added Rule: Name=Schematic Supply Nets
+Added Rule: Name=Schematic Supply Nets_1

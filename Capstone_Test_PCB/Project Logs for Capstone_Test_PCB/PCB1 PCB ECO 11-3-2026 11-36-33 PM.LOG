@@ -1,0 +1,17 @@
+Added Component: Designator=J?(1725711)
+Add component (AddParameter): Name = "Arrow Part Number"; Value = "1725711"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Arrow Price/Stock"; Value = "https://www.arrow.com/en/products/1725711/phoenix-contact?utm_currency=USD&region=nac"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Datasheet Link"; Value = "https://www.phoenixcontact.com/en-us/products/printed-circuit-board-terminal-mpt-05-8-254-1725711?type=pdf"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Height"; Value = "8.65mm"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Name"; Value = "Phoenix Contact"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Part_Number"; Value = "1725711"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Part Number"; Value = "651-1725711"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Price/Stock"; Value = "https://www.mouser.co.uk/ProductDetail/Phoenix-Contact/1725711?qs=W3wJikR1%252BS7n1cN8b%252BRI%2FQ%3D%3D"; VariantName = "[No Variations]"
+Added Member To Class: ClassName=ICM_Mag Member=Component C? 10nF
+Added Member To Class: ClassName=ICM_Mag Member=Component C? 10uF
+Added Member To Class: ClassName=ICM_Mag Member=Component C? 2.2uF
+Added Member To Class: ClassName=ICM_Mag Member=Component C? CC0805KRX7R9BB104
+Added Member To Class: ClassName=ICM_Mag Member=Component C? CC0805KRX7R9BB104
+Added Member To Class: ClassName=ICM_Mag Member=Component J? 1725711
+Added Member To Class: ClassName=ICM_Mag Member=Component J? 2138
+Added Member To Class: ClassName=ICM_Mag Member=Component R? 5.1k
