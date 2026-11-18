@@ -4,6 +4,7 @@ const TRAIL_S = 4;
 const posCamera = {...POS_VIEW_START};
 const posTrail = [];
 let posLatest = null, posState = null, posDrag = null;
+let posOrientationQuat = null;
 
 (function controls() {
   const view = $("posview");
@@ -84,6 +85,7 @@ function positionSample(sample) {
 
 function positionState(state) {
   const s = state.locate;
+  posOrientationQuat = state.orientation_quat;
   if (!s || !state.coil_on || !posState || posState.frame_id !== s.frame_id || posState.reference_id !== s.reference_id) {
     posLatest = null; posTrail.length = 0; $("historywarning").hidden = true;
   }
@@ -171,7 +173,7 @@ function drawPosition() {
   if (loc && loc.position) {
     const p = loc.position;
     line(px(p), px([p[0], p[1], 0]), css("--dim"), 1, [3, 3]);    // drop to the displayed map plane
-    drawBoard(g, px, p, posLatest.quat);
+    drawBoard(g, px, p, posOrientationQuat || posLatest.quat);
     const b = measuredCoilField(posLatest, coil);    // what the ICM reads from the coil
     if (b) {
       const size = Math.hypot(...b), len = fieldLength(size, 6);

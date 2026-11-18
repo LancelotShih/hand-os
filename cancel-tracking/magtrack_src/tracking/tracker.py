@@ -395,8 +395,14 @@ class Tracker:
             age = None
             if self._t_ref is not None and self._last_t is not None:
                 age = round(self._last_t - self._t_ref, 1)
+            orientation_quat = None
+            if self._q is not None:
+                q = (quat_norm(quat_mul(quat_conj(self._q_ref), self._q))
+                     if self._q_ref is not None else quat_norm(self._q))
+                orientation_quat = [round(v, 4) for v in q]
             # Historical JSON keys/stage value retained for existing clients/logs.
             return {
+                "orientation_quat": orientation_quat,
                 "capturing": "earth" if c else None,
                 "ambient_ready": self._ambient_ready,
                 "coil_on": self._coil_on,

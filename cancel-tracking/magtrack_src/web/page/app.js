@@ -204,13 +204,14 @@ es.addEventListener("status", e => {
 });
 (function frame() {
   const now = performance.now() / 1000;
+  const orientationQuat = state && state.orientation_quat;
   SIDES.forEach(side => {
     while (side.hist.length && side.hist[0].t < now - HIST_S) side.hist.shift();
-    drawView(side.part("view"), sampleOf(side));
+    drawView(side.part("view"), sampleOf(side), orientationQuat);
     const s = stateOf(side);
     if (s && s.tumbling) {
       // the shared orientation turns both balls, even if one sensor has no reading yet
-      drawSweep(side.part("sweep"), s, latest ? latest.quat : [1, 0, 0, 0], side.trail);
+      drawSweep(side.part("sweep"), s, orientationQuat || (latest ? latest.quat : [1, 0, 0, 0]), side.trail);
     }
   });
   drawCharts(HIST_S, state ? state.pass_ut : 5);

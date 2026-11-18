@@ -378,6 +378,10 @@ block intervals, reference identifiers, or MMC freshness identifiers.
 (with connection/error), and optional locator status (home, points, fit state,
 coil summary). HTTP adds ICM connection/error, thresholds, and log status.
 These are separately locked snapshots, not one atomic snapshot of the system.
+Tracker status also exposes `orientation_quat` at the status-update rate. Before
+the first reference capture it is the live board-to-level estimate (heading is
+arbitrary); afterward it is relative to the captured reference. This lets the
+browser show board rotation even while no magnetic view samples are available.
 
 ## Magnetometer calibration
 

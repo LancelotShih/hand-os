@@ -3,7 +3,7 @@ import math
 import random
 import unittest
 
-from magtrack_src.geometry.vectors import norm, quat_conj, quat_rotate, sub
+from magtrack_src.geometry.vectors import norm, quat_angle_deg, quat_conj, quat_mul, quat_rotate, sub
 from magtrack_src.orientation.map_frame import align_vectors
 from magtrack_src.position.coil_model import Coil
 from magtrack_src.position.field_lookup import FieldLookup
@@ -25,6 +25,21 @@ def reading(field, reference="ambient-1", **changes):
 
 
 class StartingOrientation(unittest.TestCase):
+    def test_live_orientation_is_available_before_reference_capture(self):
+        tracker = Tracker(OFFSET, GYRO_BIAS, require_coil_off=True)
+        board = SimBoard(tracker)
+        board.still(0.2)
+        self.assertFalse(board.samples)
+
+        before = tracker.status()["orientation_quat"]
+        board.turn((0, 0, 1), 90, rate=60)
+        after = tracker.status()["orientation_quat"]
+
+        self.assertIsNotNone(before)
+        self.assertIsNotNone(after)
+        change = quat_mul(quat_conj(before), after)
+        self.assertAlmostEqual(quat_angle_deg(change), 90, delta=5)
+
     def test_independently_specified_quarter_turn(self):
         # Current board x points along saved y; current y points along saved -x.
         q = align_vectors((0, 0, 1), (-4, -17, -43), (0, 0, 1), (17, -4, -43))
