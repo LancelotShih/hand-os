@@ -20,7 +20,8 @@ SAMPLE_COLUMNS = ["t_s", "qw", "qx", "qy", "qz", "yaw_deg", "pitch_deg", "roll_d
                   "mmc_predicted_x_ut", "mmc_predicted_y_ut", "mmc_predicted_z_ut",
                   "mmc_error_x_ut", "mmc_error_y_ut", "mmc_error_z_ut",
                   "mmc_error_ut", "mmc_error_deg", "calibration_on", "mmc_calibration_on",
-                  "pos_x_cm", "pos_y_cm", "pos_z_cm", "position_history_based", "reconnect_warning",
+                  "pos_x_cm", "pos_y_cm", "pos_z_cm", "position_history_based", "position_ambiguous",
+                  "reconnect_warning",
                   "ambient_ready", "coil_on", "frame_id", "reference_id", "correction_id"]
 
 IDENTIFIER_COLUMNS = {"frame_id", "reference_id", "correction_id"}
@@ -53,7 +54,8 @@ def sample_row(t, s):
                    *(m.get("predicted") or [None] * 3), *(m.get("error") or [None] * 3),
                    m.get("error_ut"), m.get("error_deg"),
                    s.get("calibration_on"), m.get("calibration_on"),
-                   *(position or [None] * 3), locate.get("history_based"), s.get("reconnect_warning"),
+                   *(position or [None] * 3), locate.get("history_based"), locate.get("ambiguous"),
+                   s.get("reconnect_warning"),
                    s.get("ambient_ready"), s.get("coil_on"),
                    s.get("frame_id"), s.get("reference_id"), s.get("correction_id")])
 

@@ -51,12 +51,18 @@
     <h2>Estimated sensor position</h2> <span class="hint">Centimeters from the electromagnet center. No starting sensor position is required.</span>
     <div class="posgrid">
       <div>
-        <canvas id="posview"></canvas>
+        <div class="position-canvas-wrap">
+          <canvas id="posview"></canvas>
+          <div id="positionambiguity" class="position-ambiguity" role="status" aria-live="polite" hidden>
+            <span class="position-ambiguity-icon" aria-hidden="true">!</span>
+            <span id="positionambiguitytext"></span>
+          </div>
+        </div>
         <div class="legend">
           <span><i style="background:var(--meas)"></i>coil field estimated from the reading</span>
           <span><i style="background:linear-gradient(90deg,hsl(220 90% 55%),hsl(0 90% 55%))"></i>model field arrows: blue weaker, red stronger</span>
           <label><input id="posfieldtoggle" type="checkbox" checked> Show model field</label>
-          <label><input id="posgridtoggle" type="checkbox"> Show XY grid (5 cm)</label>
+          <label><input id="posgridtoggle" type="checkbox"> Show XY grid (1 cm; labels every 5 cm)</label>
           <span>Coil field model <button class="info" data-info="estimatedAndModelledCoilFields"></button></span>
           <span>Drag to rotate, scroll to zoom <button class="info" data-info="positionView"></button></span>
           <select id="posfield" aria-label="Model field drawing style">

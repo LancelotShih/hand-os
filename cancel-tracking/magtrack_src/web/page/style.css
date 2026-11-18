@@ -74,6 +74,12 @@ th:first-child, td:first-child { text-align:left; }
 .posgrid { display:grid; gap:16px; grid-template-columns:minmax(0,3fr) minmax(0,2fr); margin-top:8px; }
 #posview { aspect-ratio:4/3; cursor:grab; touch-action:none; margin-bottom:8px; }
 #posview:active { cursor:grabbing; }
+.position-canvas-wrap { position:relative; }
+.position-ambiguity { position:absolute; top:8px; left:8px; z-index:2; display:flex; align-items:center; gap:6px;
+                      max-width:calc(100% - 16px); padding:6px 9px; border:2px solid var(--bad);
+                      border-radius:7px; background:var(--card); color:var(--bad); font-size:12px; font-weight:700; }
+.position-ambiguity-icon { display:inline-grid; place-items:center; flex:0 0 18px; height:18px;
+                           border-radius:50%; background:var(--bad); color:#fff; font-size:14px; }
 #posxyz { font-size:24px; margin-bottom:6px; white-space:pre-wrap; overflow-wrap:anywhere; }
 .readoutlabel { color:var(--dim); margin-bottom:4px; }
 .calentry { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:6px; }

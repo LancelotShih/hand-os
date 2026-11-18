@@ -31,7 +31,10 @@ user to choose the sensor's actual position. The model's field is symmetric
 about the coil center, so mirrored positions can have the same reading. After
 the choice, `Locator.update` uses the previous position to choose among matching
 locations and marks ambiguous or locally weakly determined estimates with a
-history-based warning. This does not reject estimates in a blind spot:
+history-based warning. The sample includes other matching positions for the
+page to mark as alternatives; the lookup can represent a continuous set of
+solutions with sampled locations, so it is not necessarily exhaustive. This
+does not reject estimates in a blind spot:
 `mm_per_ut` describes local sensitivity and cannot identify the separate
 mirrored answer.
 

@@ -56,6 +56,7 @@ class Locator:
 
     def update(self, sample):
         invalid = lambda text: {"position": None, "why": text, "history_based": False,
+                                "ambiguous": False, "alternatives": [],
                                 "reconnect_warning": bool(sample.get("reconnect_warning"))}
         if not sample.get("ambient_ready"):
             return invalid("Measure the ambient field with the electromagnet switched off.")
@@ -108,7 +109,8 @@ class Locator:
                     "The coil field can match mirrored positions about the coil center. "
                     "Hold still and choose the position where the sensor actually is."
                 )
-                result["candidates"] = [list(p) for p in self._choices]
+                result["ambiguous"] = True
+                result["candidates"] = result["alternatives"] = [list(p) for p in self._choices]
                 return result
             p, miss = min(matches, key=lambda match: norm(sub(match[0], previous))) if previous else matches[0]
         try:
@@ -116,12 +118,23 @@ class Locator:
             distance = finite_number(norm(p), "distance from coil")
         except (ValueError, OverflowError):
             return invalid("The position calculation produced invalid sensitivity or distance.")
-        history = len(matches) > 1 or sensitivity > 4.0
+        ambiguous = len(matches) > 1
+        alternatives = [list(candidate) for candidate, _ in matches
+                        if norm(sub(candidate, p)) > 0.5]
+        history = ambiguous or sensitivity > 4.0
+        warning = None
+        if ambiguous:
+            warning = (f"AMBIGUOUS FIELD: {len(matches)} candidate positions match this reading. "
+                       "The displayed position is selected using the previous estimate; "
+                       "this measurement alone does not distinguish them.")
+        elif sensitivity > 4.0:
+            warning = ("POSITION IS WEAKLY DETERMINED: small field changes can represent large movement; "
+                       "the estimate may be unstable.")
         result = {"position": [round(v, 2) for v in p], "from_coil_cm": round(distance, 1),
                   "mismatch_ut": round(miss, 2), "mm_per_ut": round(min(sensitivity, 999.0), 1),
+                  "ambiguous": ambiguous, "alternatives": alternatives,
                   "history_based": history, "reconnect_warning": bool(sample.get("reconnect_warning")),
-                  "warning": ("AMBIGUOUS FIELD: using the previous position to choose among matching locations. "
-                              "Motion within a blind spot cannot be recovered from this field alone." if history else None)}
+                  "warning": warning}
         with self._lock:
             if (revision != self._revision or reference_id != self._reference_id or
                 selection_revision != self._selection_revision):

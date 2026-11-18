@@ -11,10 +11,9 @@ from unittest.mock import patch
 
 from magtrack_src.config import PASS_UT
 from magtrack_src.recording.data_log import DataLog
-from magtrack_src.recording.schema import RAW_COLUMNS, SAMPLE_COLUMNS, read_samples
-from magtrack_src.recording.log_plot import nice_top, render, summarize, thin, write_plot
-from tests.sim.sim_board import GYRO_BIAS, OFFSET, SimBoard
-from magtrack_src.tracking.tracker import Tracker
+from magtrack_src.recording.schema import RAW_COLUMNS, SAMPLE_COLUMNS, read_samples, sample_row
+from magtrack_src.recording.log_plot import nice_top, render, summarize, thin, trajectory_data, write_plot
+from tests.sim.sim_board import GYRO_BIAS, OFFSET, SimBoard, diagnostic_tracker
 
 
 class LoggedBoard(SimBoard):
@@ -42,7 +41,7 @@ class Logging(unittest.TestCase):
         self.dir.cleanup()
 
     def record(self):
-        tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
+        tracker = diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS)
         board = LoggedBoard(tracker, self.log)
         board.still(.5)
         name = self.log.start(tracker.status())
@@ -90,7 +89,7 @@ class Logging(unittest.TestCase):
         self.assertEqual(json.loads((folder / "info.json").read_text())["have_offset"], True)
 
     def test_samples_before_zero_are_blank_not_zero(self):
-        tracker = Tracker(bias=GYRO_BIAS)
+        tracker = diagnostic_tracker(bias=GYRO_BIAS)
         board = LoggedBoard(tracker, self.log)
         board.still(.5)
         name = self.log.start()
@@ -110,6 +109,16 @@ class Logging(unittest.TestCase):
     def test_nothing_is_recorded_when_not_logging(self):
         self.log.add(1.0, (0, 0, 1), (0, 0, 0), None, None)
         self.assertFalse((self.root / "logs").exists())
+
+    def test_sample_row_saves_position_ambiguity_with_the_pose(self):
+        sample = {"quat": [1, 0, 0, 0], "euler": [0, 0, 0], "turn": 0,
+                  "measured": [1, 2, 3], "predicted": [1, 2, 3], "error": [0, 0, 0],
+                  "error_ut": 0, "locate": {"position": [1, 2, 3],
+                                            "history_based": True, "ambiguous": True}}
+        row = dict(zip(SAMPLE_COLUMNS, sample_row(0.25, sample)))
+        self.assertEqual(row["pos_x_cm"], "1.00000")
+        self.assertEqual(row["position_history_based"], "1.00000")
+        self.assertEqual(row["position_ambiguous"], "1.00000")
 
     def test_a_disk_problem_ends_the_log_quietly(self):
         self.log.start()
@@ -271,3 +280,32 @@ class Plot(unittest.TestCase):
                 c[name].append(1.0)
             c["t_s"][-1] = t
         self.assertEqual(render("x", c).count('class="trace"'), 28)     # 11 plots, two sensors, 3 positions
+
+    def test_trajectory_replay_embeds_pose_and_keeps_missing_fixes_as_gaps(self):
+        c = {name: [None, None, None] for name in SAMPLE_COLUMNS}
+        c["t_s"] = [0.0, 0.05, 0.1]
+        c["qw"], c["qx"], c["qy"], c["qz"] = [1.0] * 3, [0.0] * 3, [0.0] * 3, [0.0] * 3
+        c["pos_x_cm"], c["pos_y_cm"], c["pos_z_cm"] = [1.0, None, 2.0], [3.0, None, 4.0], [5.0, None, 6.0]
+        c["position_history_based"] = [0.0, None, 1.0]
+        c["position_ambiguous"] = [0.0, None, 1.0]
+        poses = trajectory_data(c)
+        self.assertEqual(poses[0]["p"], [1.0, 3.0, 5.0])
+        self.assertIsNone(poses[1]["p"])
+        self.assertTrue(poses[2]["ambiguous"])
+        self.assertTrue(poses[2]["break"])
+        page = render("movement", c)
+        self.assertIn('id="trajectory-slider"', page)
+        self.assertIn('"ambiguous":true', page)
+
+    def test_downsampling_preserves_position_gaps(self):
+        count = 36001
+        c = {name: [None] * count for name in SAMPLE_COLUMNS}
+        c["t_s"] = [i * 0.05 for i in range(count)]
+        for name in ("qw", "pos_x_cm", "pos_y_cm", "pos_z_cm"):
+            c[name] = [1.0] * count
+        c["pos_x_cm"][5] = c["pos_y_cm"][5] = c["pos_z_cm"][5] = None
+        poses = trajectory_data(c)
+        self.assertLessEqual(len(poses), 12001)
+        self.assertEqual(poses[1]["t"], 0.2)
+        self.assertEqual(poses[2]["t"], 0.4)
+        self.assertTrue(poses[2]["break"])

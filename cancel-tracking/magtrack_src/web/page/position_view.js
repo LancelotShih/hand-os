@@ -4,7 +4,7 @@ const TRAIL_S = 4;
 const COIL_LENGTH_CM = 5, COIL_WIDTH_CM = 4, COIL_HEIGHT_CM = 2;
 const COIL_DRAWING_SCALE = 0.5;
 const BOARD_HALF_SIZE_CM = 0.6, BOARD_HALF_THICKNESS_CM = 0.08;
-const POSITION_GRID_SPACING_CM = 5;
+const POSITION_GRID_SPACING_CM = 1, POSITION_GRID_LABEL_SPACING_CM = 5;
 const posCamera = {...POS_VIEW_START};
 const posTrail = [];
 let posLatest = null, posState = null, posDrag = null;
@@ -71,6 +71,17 @@ function showPositionChoices(candidates) {
 function positionSample(sample) {
   posLatest = sample;
   const loc = sample && sample.locate, now = performance.now() / 1000;
+  const badge = $("positionambiguity");
+  const ambiguityText = $("positionambiguitytext");
+  const possible = loc && (loc.alternatives || loc.candidates) || [];
+  badge.hidden = !(loc && loc.ambiguous);
+  ambiguityText.textContent = loc && loc.ambiguous
+    ? loc.position
+      ? "AMBIGUOUS — prior position used (" + (possible.length + 1) + " candidates)"
+      : "AMBIGUOUS — choose among " + possible.length + " candidates"
+    : "";
+  badge.title = (loc && (loc.warning || loc.why) || "")
+    + " Red question marks show other sampled matching positions; the set may not be exhaustive.";
   if (loc && loc.position) posTrail.push({t: now, p: loc.position});
   while (posTrail.length && posTrail[0].t < now - TRAIL_S) posTrail.shift();
   const b = measuredCoilField(sample);
@@ -178,6 +189,9 @@ function drawPosition() {
   g.globalAlpha = 1;
 
   const loc = posLatest && posLatest.locate;
+  if (loc && loc.ambiguous) {
+    drawAlternativePositions(g, px, loc.position ? loc.alternatives : loc.candidates);
+  }
   if (loc && loc.position) {
     const p = loc.position;
     line(px(p), px([p[0], p[1], 0]), css("--dim"), 1, [3, 3]);    // drop to the displayed map plane
@@ -192,17 +206,30 @@ function drawPosition() {
   }
 }
 
+function drawAlternativePositions(g, px, positions) {
+  for (const p of positions || []) {
+    const point = px(p);
+    g.globalAlpha = 0.65;
+    g.strokeStyle = css("--bad"); g.lineWidth = 1.5; g.setLineDash([3, 3]);
+    g.beginPath(); g.arc(point[0], point[1], 7, 0, 7); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = css("--bad"); g.font = "bold 10px system-ui"; g.fillText("?", point[0] - 3, point[1] + 4);
+  }
+  g.globalAlpha = 1;
+}
+
 function drawPositionGrid(g, px, range, line, label) {
   const limit = Math.floor(range / POSITION_GRID_SPACING_CM) * POSITION_GRID_SPACING_CM;
-  g.globalAlpha = 0.35;
   for (let v = -limit; v <= limit; v += POSITION_GRID_SPACING_CM) {
-    const color = v === 0 ? css("--dim") : css("--line");
-    const width = v === 0 ? 1.5 : 1;
+    const major = v % POSITION_GRID_LABEL_SPACING_CM === 0;
+    g.globalAlpha = v === 0 ? 0.9 : major ? 0.75 : 0.55;
+    const color = major ? css("--dim") : css("--line");
+    const width = v === 0 ? 1.5 : major ? 1.2 : 0.8;
     line(px([v, -limit, 0]), px([v, limit, 0]), color, width);
     line(px([-limit, v, 0]), px([limit, v, 0]), color, width);
   }
   g.globalAlpha = 0.8;
-  for (let v = -limit; v <= limit; v += POSITION_GRID_SPACING_CM) {
+  for (let v = -limit; v <= limit; v += POSITION_GRID_LABEL_SPACING_CM) {
     label(px([v, -limit, 0]), String(v), css("--dim"));
     if (v !== -limit) label(px([-limit, v, 0]), String(v), css("--dim"));
   }

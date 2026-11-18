@@ -692,9 +692,9 @@ available, such as a missing fresh magnetic reading or reference field.
 | `data/calibration/mmc_mounting.json` | MMC axis mapping; tracked in git, retained by sensor reset |
 | `data/calibration/coil_cal.json` | Entered home, entered positions, field differences, reading variation, fitted model/checks; old files without home need coordinate conversion through Save sensor home coordinates |
 | `data/logs/<start>/raw.csv` | Every ICM loop reading in board axes without software offset removal; fresh AK values or blanks, consumed MMC values in chip axes and their ages |
-| `samples.csv` | Rounded estimates at the ICM display-update rate and position coordinates; no position-quality/history flags; cached MMC values can repeat; columns and row formatting live in `recording/schema.py` |
+| `samples.csv` | Rounded estimates at the ICM display-update rate, position coordinates, orientation, and history/ambiguity flags; cached MMC values can repeat; columns and row formatting live in `recording/schema.py` |
 | `info.json` | Tracker/locator status at log start, not a complete configuration or history of subsequent changes |
-| `plot.html` | Self-contained plot generated at stop or by the plotting CLI; no position-ambiguity warning |
+| `plot.html` | Self-contained field plots and interactive 3D position/orientation playback generated at stop or by the plotting CLI; ambiguous path sections are marked, while missing positions and long gaps break the trace |
 
 CSV time is monotonic seconds from the first logged reading; folder names and
 metadata use wall time. Mid-run bias, reference, calibration, and model changes

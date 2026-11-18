@@ -83,11 +83,18 @@ class AbsoluteLookup(unittest.TestCase):
         first = loc.update(sample)
         self.assertIsNone(first["position"])
         self.assertGreaterEqual(len(first["candidates"]), 2)
+        self.assertTrue(first["ambiguous"])
+        self.assertEqual(first["alternatives"], first["candidates"])
         self.assertIn("mirrored positions", first["why"])
         self.assertIsNone(loc._last)
         loc.choose_position(p, sample["reference_id"])
         result = loc.update(sample)
         self.assertLess(norm(sub(result["position"], p)), 0.01)
+        self.assertTrue(result["ambiguous"])
+        self.assertTrue(result["alternatives"])
+        self.assertIn("previous estimate", result["warning"])
+        self.assertTrue(all(norm(sub(tuple(other), result["position"])) > 0.5
+                               for other in result["alternatives"]))
         self.assertTrue(result["history_based"])
         self.assertIn("AMBIGUOUS", result["warning"])
 

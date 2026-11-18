@@ -31,9 +31,12 @@ reference, calibration and model changes are not completely reconstructible.
 Raw timestamps use ICM acquisition time; `mmc_age_s` offsets the consumed MMC
 reading. Sample fields are rounded before logging.
 
-Position columns contain coordinates only. Local sensitivity, ambiguity and
-reliance on history are not recorded, and exported plots have no dedicated
-position-ambiguity warning.
+Position samples include XYZ, quaternion orientation, and history/ambiguity
+flags. The generated `plot.html` embeds an interactive 3D playback with a
+time slider and a trace of estimated positions. Red dashed path sections mark
+ambiguous estimates selected using the previous position; missing estimates
+and long gaps break the trace. The path is an estimate, not ground truth, and
+the lookup's sampled alternatives are not saved.
 
 `compare` requires MMC readings and is intended for coil-off motion with pauses.
 It selects readings using the ICM board-rotation angle, counts cached MMC values,
