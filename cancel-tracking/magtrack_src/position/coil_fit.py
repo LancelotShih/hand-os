@@ -1,7 +1,6 @@
-"""Numerical coil fitting from the current home-relative field measurements.
+"""Numerical coil fitting from known positions and absolute coil-field vectors.
 
-The calculations have no file, hardware, thread, or live tracking state.
-Home-relative fitting is retained until the home-free behavior is implemented.
+No file, hardware, thread, orientation or live tracking state is owned here.
 """
 
 import math
@@ -86,11 +85,11 @@ def _dipole_matrix(d):
             for i in range(3)]
 
 
-def _coarse_search(points, home, slack_cm, grid_cm):
+def _coarse_search(points, slack_cm, grid_cm):
     """Best few coil centers on a grid within ``slack_cm`` of 0, treating the coil
     as a point: for a given center the field is linear in the magnet's moment, so
     each guess is quick."""
-    clear = [home] + [p for p, _ in points]
+    clear = [p for p, _ in points]
     n = int(slack_cm // grid_cm)
     scored = []
     for i in range(-n, n + 1):
@@ -99,11 +98,10 @@ def _coarse_search(points, home, slack_cm, grid_cm):
                 c = (i * grid_cm, j * grid_cm, k * grid_cm)
                 if norm(c) > slack_cm + 1e-9 or any(norm(sub(c, p)) < KEEP_CLEAR_CM for p in clear):
                     continue
-                at_home = _dipole_matrix(sub(home, c))
                 rows, rhs = [], []
                 for p, e in points:
                     m = _dipole_matrix(sub(p, c))
-                    rows += [[m[a][b] - at_home[a][b] for b in range(3)] for a in range(3)]
+                    rows += m
                     rhs += list(e)
                 ata = [[sum(row[a] * row[b] for row in rows) for b in range(3)] for a in range(3)]
                 atb = [sum(row[a] * v for row, v in zip(rows, rhs)) for a in range(3)]
@@ -123,33 +121,32 @@ def _coarse_search(points, home, slack_cm, grid_cm):
     return picked
 
 
-def _residuals(points, home, slack_cm):
+def _residuals(points, slack_cm):
     def f(x):
         coil = Coil.from_params(x, slack_cm)
-        at_home = coil.field(home)
         out = []
         for p, e in points:
-            out.extend(sub(sub(coil.field(p), at_home), e))
+            out.extend(sub(coil.field(p), e))
         return out
     return f
 
 
-def refine_coil(points, home, x0, slack_cm=LOCATE_CENTER_SLACK_CM, iterations=200):
-    x, cost = least_squares(_residuals(points, home, slack_cm), x0, iterations,
+def refine_coil(points, x0, slack_cm=LOCATE_CENTER_SLACK_CM, iterations=200):
+    x, cost = least_squares(_residuals(points, slack_cm), x0, iterations,
                             steps=[1e-3] * 3 + [1e-3 * max(1.0, max(abs(v) for v in x0[3:6]))] * 3 + [1e-3])
     return Coil.from_params(x, slack_cm), cost
 
 
-def fit_coil(points, home, slack_cm=LOCATE_CENTER_SLACK_CM, grid_cm=LOCATE_CENTER_GRID_CM):
+def fit_coil(points, slack_cm=LOCATE_CENTER_SLACK_CM, grid_cm=LOCATE_CENTER_GRID_CM):
     """The coil that best explains ``points``: ``[(position, error), ...]``,
-    positions in cm from the coil's center, errors in uT, both in the home axes.
-    ``home`` is where the reference field was captured, in cm from the coil's center."""
+    positions in cm from the coil's center, coil fields in uT in saved map axes.
+    These are ambient-subtracted fields in the saved hardware-defined map axes."""
     if len(points) < LOCATE_MIN_POINTS:
         raise ValueError(f"A coil model needs at least {LOCATE_MIN_POINTS} position-and-field measurements; {len(points)} are available.")
     best = None
-    for _, c, moment in _coarse_search(points, home, slack_cm, grid_cm):
+    for _, c, moment in _coarse_search(points, slack_cm, grid_cm):
         half = 2.0
-        coil, cost = refine_coil(points, home, [*c, *(v / (2.0 * half) for v in moment), half], slack_cm)
+        coil, cost = refine_coil(points, [*c, *(v / (2.0 * half) for v in moment), half], slack_cm)
         if best is None or cost < best[1]:
             best = (coil, cost)
     if best is None:

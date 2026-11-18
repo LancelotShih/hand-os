@@ -7,7 +7,10 @@ Used by: tracking/pair.py, earth_cancel.py.  Uses: orientation, calibration, tra
 """
 
 import math
+import hashlib
+import json
 import threading
+import uuid
 from collections import deque
 
 from magtrack_src.tracking.reference_capture import ReferenceCapture
@@ -17,6 +20,7 @@ from magtrack_src.geometry.vectors import (angle_deg, mat_vec, norm, quat_angle_
                       quat_from_gravity, quat_mul, quat_norm, quat_rotate, quat_to_euler, sub)
 from magtrack_src.orientation.gyro_bias import GyroRest
 from magtrack_src.orientation.madgwick import madgwick_step
+from magtrack_src.orientation.map_frame import align_vectors, validate_frame
 from magtrack_src.calibration.tumble import Tumble, fit_tumble
 
 IDENTITY = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
@@ -27,7 +31,7 @@ NO_GAINS = (1.0, 1.0, 1.0)
 class Tracker:
     def __init__(self, offset=None, bias=(0.0, 0.0, 0.0), store=None, gains=(1.0, 1.0, 1.0),
                  axes=None, fit_mounting=False, block_samples=BLOCK_SAMPLES,
-                 use_calibration=True):
+                 use_calibration=True, require_coil_off=True, map_frame=None):
         self._lock = threading.Lock()
         # Controls take this before _lock. Fitting and sensor updates never hold
         # it; applying/saving a result and clearing it must happen in order.
@@ -56,7 +60,15 @@ class Tracker:
         self._hist = deque()
         self._tumble = None                       # Tumble while tumbling
         self.tumble_result = None
-        self._capture = ReferenceCapture()
+        self._require_coil_off = require_coil_off
+        self._map_frame = validate_frame(map_frame) if map_frame is not None else None
+        self._ambient_ready = False
+        self._coil_on = False
+        self._reference_id = None
+        self._capture_q = None
+        self._gravity = None
+        self._reconnect_warning = False
+        self._capture = None if require_coil_off else ReferenceCapture()
         self._rest = GyroRest()
         self._block = []
         self._peak = 0.0
@@ -77,6 +89,7 @@ class Tracker:
         not fresh, and was measured ``mag_age`` seconds ago.  Returns a view sample
         every ``block_samples`` magnetometer samples, otherwise ``None``."""
         with self._lock:
+            self._gravity = tuple(accel)
             raw = mag
             if mag is not None:
                 self._count_reading(now)
@@ -112,7 +125,7 @@ class Tracker:
                 return None
 
             q_rel = quat_norm(quat_mul(quat_conj(self._q_ref), self._q))
-            self._turn = quat_angle_deg(q_rel)
+            self._turn = quat_angle_deg(quat_mul(quat_conj(self._capture_q or self._q_ref), self._q))
             if mag is None:
                 return None
             return self._sample(mag, now - mag_age, q_rel)
@@ -151,6 +164,10 @@ class Tracker:
                "measured_mag": round(norm(measured), 2),
                "predicted": None, "error": None, "error_ut": None, "error_deg": None,
                "calibration_on": self.use_calibration}
+        out.update(frame_id=self._map_frame["id"] if self._map_frame else None,
+                   reference_id=self._reference_id, correction_id=self._correction_id(),
+                   ambient_ready=self._ambient_ready, coil_on=self._coil_on,
+                   reconnect_warning=self._reconnect_warning, coil_field=None)
         if self.reference_field is not None and offset is not None:
             error = sub(measured, self.reference_field)
             size = norm(error)
@@ -162,6 +179,8 @@ class Tracker:
                        error=[round(v, 2) for v in error],
                        error_ut=round(size, 2), peak=round(self._peak, 2),
                        error_deg=round(off_by, 2), peak_deg=round(self._peak_deg, 2))
+            if self._ambient_ready and self._coil_on:
+                out["coil_field"] = error
         return out
 
     def _capture_step(self, mag, now):
@@ -171,19 +190,84 @@ class Tracker:
         self._capture = None
         u, q = done
         offset = self._offset_now
-        self._set_reference(q, mat_vec(self.axes, sub(u, offset)) if offset is not None else None)
+        corrected = mat_vec(self.axes, sub(u, offset)) if offset is not None else None
+        if not self._require_coil_off:
+            self._set_reference(q, corrected)
+            return
+        try:
+            if corrected is None or not self.mounted:
+                raise ValueError("Complete magnetometer calibration and mounting alignment before measuring the ambient field.")
+            correction_id = self._correction_id()
+            if self._map_frame is None:
+                align_vectors(self._gravity, corrected, self._gravity, corrected)
+                self._map_frame = {"id": uuid.uuid4().hex, "gravity": self._gravity,
+                                   "ambient_field": corrected, "correction_id": correction_id}
+            elif self._map_frame["correction_id"] != correction_id:
+                raise ValueError("Sensor corrections changed. Start a new map and record new coil-calibration measurements.")
+            board_to_map = align_vectors(self._gravity, corrected, self._map_frame["gravity"],
+                                         self._map_frame["ambient_field"])
+            reference_q = quat_mul(q, quat_conj(board_to_map))
+            self._set_reference(reference_q, quat_rotate(board_to_map, corrected))
+            self._ambient_ready = True
+            self._reconnect_warning = False
+        except ValueError as error:
+            self._ambient_ready = False
+            self.message = str(error)
 
     def _set_reference(self, q, reference_field):
         self._q_ref = q
+        self._capture_q = self._q
+        self._reference_id = uuid.uuid4().hex
         self._t_ref = self._last_t
         self.reference_field = reference_field
         self._block = []
         self._peak = self._peak_deg = 0.0
 
     # -- control side --------------------------------------------------------
-    def capture_reference_field(self):
-        """Capture the corrected total field; includes the coil if it is on."""
+    def _correction_id(self):
+        data = (self.offset, self.gains, self.axes, self.use_calibration)
+        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:24]
+
+    def map_frame(self):
         with self._lock:
+            return dict(self._map_frame) if self._map_frame else None
+
+    def set_coil_power(self, on):
+        with self._lock:
+            if on and (not self._ambient_ready or self._capture is not None or self._tumble is not None):
+                raise ValueError("Turn the coil off and finish the ambient measurement before starting tracking.")
+            self._coil_on = bool(on)
+            self._block = []
+
+    def new_map(self):
+        with self._calibration_commit_lock, self._lock:
+            self._calibration_revision += 1
+            self._tumble = None
+            self._map_frame = None
+            self._invalidate_ambient()
+            self.message = "New map: calibrate the sensors if needed, then measure the ambient field with the coil off."
+
+    def _invalidate_ambient(self):
+        self.reference_field = None
+        self._ambient_ready = False
+        self._reference_id = None
+        self._coil_on = False
+        self._block = []
+        self._capture = None if self._require_coil_off else ReferenceCapture()
+
+    def dismiss_reconnect_warning(self):
+        with self._lock:
+            self._reconnect_warning = False
+
+    def capture_reference_field(self, coil_off_confirmed=False):
+        """Explicit coil-off capture in the application; generic diagnostic capture otherwise."""
+        with self._lock:
+            if self._require_coil_off and coil_off_confirmed is not True:
+                raise ValueError("Confirm that the electromagnet is switched off before measuring the ambient field.")
+            if self._tumble is not None:
+                raise ValueError("Finish or cancel sensor calibration first.")
+            self._ambient_ready = False
+            self._coil_on = False
             self.message = None
             self._capture = ReferenceCapture()
 
@@ -195,14 +279,14 @@ class Tracker:
                 raise ValueError("Finish or cancel the magnetometer calibration before changing its corrections.")
             self._calibration_revision += 1
             self.use_calibration = on
-            self.reference_field = None
-            self._block = []
+            self._invalidate_ambient()
             self.message = None
-            self._capture = ReferenceCapture()
 
     def tumble_start(self):
         with self._calibration_commit_lock, self._lock:
             self._calibration_revision += 1
+            if self._require_coil_off:
+                self._invalidate_ambient()
             self._tumble = Tumble()
             self.tumble_result = None
             self.message = None
@@ -248,10 +332,9 @@ class Tracker:
                     if self._fit_mounting:
                         self.axes = result["mounting"]["axes"]
                         self.mounted = True
-                    self.reference_field = None
+                    self._invalidate_ambient()
                     self.tumble_result = result
                     self._block = []
-                    self._capture = ReferenceCapture()
                     bias = self.bias
             if self._store is not None:
                 try:
@@ -277,12 +360,12 @@ class Tracker:
                 self._calibration_revision += 1
                 self.gains = (1.0, 1.0, 1.0)
                 self.offset = self.reference_field = None
+                self._invalidate_ambient()
                 self.bias = (0.0, 0.0, 0.0)
                 self._tumble = self.tumble_result = None
                 self._block = []
                 self._peak = self._peak_deg = 0.0
                 self.message = "Sensor calibration cleared. Rest the board for about a second to estimate the gyroscope zero rate, then click Calibrate magnetometers."
-                self._capture = ReferenceCapture()
             if self._store is not None:
                 try:
                     self._store.clear()
@@ -291,22 +374,16 @@ class Tracker:
                         self.message = f"Couldn't delete the saved calibration: {e}"
 
     def sensor_lost(self):
-        """Back after a gap with no readings. The reference capture is kept, so home is
-        too: capturing again wherever the board happens to be would quietly move
-        it.  Tilt comes fresh from the accelerometer on the next reading.  Heading
-        can't be measured (the coil spoils the magnetometer for it), so it's
-        assumed unchanged; if the board turned in the gap, a capture at home fixes it."""
+        """Keep the estimate through a gap; heading motion is unobserved and warned."""
         with self._lock:
             self._last_t = None                   # no gyro across the gap, and not a loop gap
             self._hist.clear()                    # orientations from before the gap
             self._block = []
             self._retilt = self._q is not None
+            self._reconnect_warning = True
             if self._capture is not None:         # a capture cut off by the gap starts over
                 self._capture = ReferenceCapture()
-            self.message = ("Sensor reconnected. The reference field and previous heading are retained; board tilt is estimated "
-                            "from the accelerometer. Any turning while disconnected was not measured. Return the board "
-                            "to its sensor-home mark in the original orientation and click Measure reference field at sensor home."
-                            if self.reference_field is not None else "Sensor reconnected.")
+            self.message = "Sensor reconnected. Continuing the previous estimate; turning during the gap was not measured. Re-measure the ambient field with the coil off to recover orientation."
 
     def _tumble_now(self):
         now = self._tumble.now if self._tumble else None
@@ -321,6 +398,12 @@ class Tracker:
             # Historical JSON keys/stage value retained for existing clients/logs.
             return {
                 "capturing": "earth" if c else None,
+                "ambient_ready": self._ambient_ready,
+                "coil_on": self._coil_on,
+                "reference_id": self._reference_id,
+                "frame_id": self._map_frame["id"] if self._map_frame else None,
+                "correction_id": self._correction_id(),
+                "reconnect_warning": self._reconnect_warning,
                 "capture_s": round(self._last_t - c.start, 1)
                              if c and c.start is not None else 0.0,
                 "tumbling": self._tumble is not None,

@@ -9,7 +9,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from magtrack_src.calibration.store import CalibrationFile
-from magtrack_src.tracking.tracker import IDENTITY, Tracker
+from magtrack_src.tracking.tracker import IDENTITY
+from tests.sim.sim_board import diagnostic_tracker
 
 
 def fitted(center=2.0, passed=True):
@@ -36,7 +37,7 @@ class TrackerLifecycle(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         root = Path(self.directory.name)
         self.store = CalibrationFile(root / "cal.json", root / "tumble.json", root / "mounting.json")
-        self.tracker = Tracker(offset=(7, 8, 9), store=self.store, fit_mounting=True)
+        self.tracker = diagnostic_tracker(offset=(7, 8, 9), store=self.store, fit_mounting=True)
         self.threads, self.releases, self.errors = [], [], []
         self.mounting = patch("magtrack_src.tracking.tracker.fit_axes", return_value={"axes": IDENTITY})
         self.mounting.start()

@@ -1,9 +1,6 @@
-"""Current home-relative position solve and local calibration-point checks.
+"""Local absolute-field refinement and calibration consistency checks.
 
-The solve retains the existing rule of choosing the mirror nearer its starting
-position. This is movement-history policy, not proof of a unique position.
-It remains here until lookup and tracking decisions are separated in that stage.
-No file or hardware access, workers, or live state are owned by this module.
+Live global matching is owned by field_lookup; history selection is in Locator.
 """
 
 import math
@@ -29,13 +26,8 @@ def _settle(coil, target, start):
     return tuple(x), math.sqrt(cost)
 
 
-def solve(coil, error, start, home_field):
-    """``(position, mismatch_ut)`` for one error vector, searching from ``start``.
-    ``home_field`` is the coil's field at home.  ``mismatch_ut`` is how far the
-    coil's field at the answer is from what was measured. The nearer mirror is
-    chosen from start; this is a movement-history assumption, not a unique fix.
-    Local sensitivity does not detect the separate mirrored solution."""
-    target = add(error, home_field)
+def solve(coil, target, start):
+    """Local absolute-field check, choosing the nearer mirror to its known seed."""
     p, miss = _settle(coil, target, start)
     if miss > LOCATE_MAX_MISMATCH_UT or norm(sub(p, coil.center)) > 3 * LOCATE_RANGE_CM:
         tries = [_settle(coil, target, s) for s in _seeds(coil, target)]
@@ -46,13 +38,12 @@ def solve(coil, error, start, home_field):
     return p, miss
 
 
-def check_points(coil, points, home):
+def check_points(coil, points):
     """How far each point solves from where it was said to be, in mm."""
-    at_home = coil.field(home)
-    return [round(10.0 * norm(sub(solve(coil, e, p, at_home)[0], p)), 1) for p, e in points]
+    return [round(10.0 * norm(sub(solve(coil, e, p)[0], p)), 1) for p, e in points]
 
 
-def left_out_check(coil, points, home):
+def left_out_check(coil, points):
     """Local leave-one-out consistency: refine from the all-points model without
     each point, then solve starting at its known position. This is not an
     independent global accuracy test. None when too few points remain."""
@@ -61,8 +52,8 @@ def left_out_check(coil, points, home):
     out = []
     for i, (p, e) in enumerate(points):
         rest = points[:i] + points[i + 1:]
-        refit, _ = refine_coil(rest, home, coil.params(), iterations=60)
-        out.append(round(10.0 * norm(sub(solve(refit, e, p, refit.field(home))[0], p)), 1))
+        refit, _ = refine_coil(rest, coil.params(), iterations=60)
+        out.append(round(10.0 * norm(sub(solve(refit, e, p)[0], p)), 1))
     return out
 
 

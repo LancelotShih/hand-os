@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from magtrack_src.position.locate import Locator
+from tests.test_home_free_tracking import FRAME
 from magtrack_src.position.measurements import CoilCalibrationMeasurement
 
 
@@ -51,17 +52,17 @@ class ModuleBoundaries(unittest.TestCase):
 
     def test_measurement_files_retain_field_meaning_and_precision(self):
         point = {"position": [4.123456789, -8.987654321, 1.246813579],
-                 "error": [-12.876543219, 3.192837465, 42.918273645],
+                 "coil_field_ut": [-12.876543219, 3.192837465, 42.918273645],
                  "spread_ut": 0.123456789}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "coil.json"
-            path.write_text(json.dumps({"home": [0, -13, 0], "coil": None,
+            path.write_text(json.dumps({"format_version": 2, "field_kind": "absolute_coil_field", "frame": FRAME, "coil": None,
                                         "points": [point]}), encoding="utf-8")
             locator = Locator(path)
             measurement = locator.points[0]
             self.assertIsInstance(measurement, CoilCalibrationMeasurement)
             self.assertEqual(measurement.position_cm, tuple(point["position"]))
-            self.assertEqual(measurement.field_difference_ut, tuple(point["error"]))
+            self.assertEqual(measurement.coil_field_ut, tuple(point["coil_field_ut"]))
             self.assertEqual(measurement.max_field_deviation_ut, point["spread_ut"])
             locator._save()
             self.assertEqual(json.loads(path.read_text())["points"], [point])

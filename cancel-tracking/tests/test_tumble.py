@@ -9,7 +9,7 @@ from magtrack_src.calibration.store import CalibrationFile
 from magtrack_src.config import PASS_MIN_TURN_DEG, PASS_UT, TUMBLE_MAX_POINTS
 from magtrack_src.geometry.vectors import norm, sub
 from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard
-from magtrack_src.tracking.tracker import Tracker
+from tests.sim.sim_board import diagnostic_tracker
 from magtrack_src.calibration.tumble import SECTORS, Tumble, coverage, fit_ellipsoid, fit_tumble, spread_95
 
 GAIN = (1.06, 0.97, 0.95)
@@ -102,7 +102,7 @@ class NotMoving(unittest.TestCase):
             fit_tumble(self.noisy_still_points())
 
     def test_a_still_board_cannot_finish(self):
-        tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
+        tracker = diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS)
         board = SimBoard(tracker)
         board.still(.5)
         tracker.tumble_start()
@@ -183,7 +183,7 @@ class DirectionMap(unittest.TestCase):
             before = set(t.swept)
 
     def test_the_page_gets_the_map(self):
-        tracker = Tracker(bias=GYRO_BIAS)
+        tracker = diagnostic_tracker(bias=GYRO_BIAS)
         board = SimBoard(tracker)
         board.still(.5)
         tracker.tumble_start()
@@ -225,7 +225,7 @@ class WholeFlow(unittest.TestCase):
         return board
 
     def test_tumble_then_turn_stays_within_the_limit(self):
-        tracker = Tracker(bias=GYRO_BIAS)
+        tracker = diagnostic_tracker(bias=GYRO_BIAS)
         board = self.run_tumble(tracker)
         board.still(.5)
         r = tracker.status()["tumble_result"]
@@ -244,7 +244,7 @@ class WholeFlow(unittest.TestCase):
     def test_saved_and_reloaded(self):
         with tempfile.TemporaryDirectory() as d:
             store = CalibrationFile(Path(d) / "cal.json", Path(d) / "t.json")
-            tracker = Tracker(bias=GYRO_BIAS, store=store)
+            tracker = diagnostic_tracker(bias=GYRO_BIAS, store=store)
             self.run_tumble(tracker)
             offset, bias, gains = store.load()
             self.assertEqual(offset, tracker.offset)
@@ -254,7 +254,7 @@ class WholeFlow(unittest.TestCase):
             self.assertTrue(log["result"]["passed"])
 
     def test_a_new_tumble_ignores_the_previous_one(self):
-        tracker = Tracker(bias=GYRO_BIAS)
+        tracker = diagnostic_tracker(bias=GYRO_BIAS)
         board = self.run_tumble(tracker)
         board.mag_gain = (0.97, 1.0, 1.03)
         tracker.tumble_start()
@@ -269,7 +269,7 @@ class WholeFlow(unittest.TestCase):
             store = CalibrationFile(Path(d) / "cal.json", Path(d) / "t.json")
             recording = Path(d) / "logs" / "2026-10-30_23-41-20"
             recording.mkdir(parents=True)
-            tracker = Tracker(bias=GYRO_BIAS, store=store)
+            tracker = diagnostic_tracker(bias=GYRO_BIAS, store=store)
             board = self.run_tumble(tracker)
             board.still(.5)
             tracker.reset_calibration()
@@ -287,7 +287,7 @@ class WholeFlow(unittest.TestCase):
             self.assertIsNone(tracker.reference_field)                # nothing to cancel against yet
 
     def test_reset_stops_a_running_tumble(self):
-        tracker = Tracker()
+        tracker = diagnostic_tracker()
         tracker.tumble_start()
         tracker.reset_calibration()
         self.assertFalse(tracker.status()["tumbling"])
@@ -295,18 +295,18 @@ class WholeFlow(unittest.TestCase):
     def test_reset_with_nothing_saved_is_fine(self):
         with tempfile.TemporaryDirectory() as d:
             store = CalibrationFile(Path(d) / "c.json", Path(d) / "t.json")
-            tracker = Tracker(store=store)
+            tracker = diagnostic_tracker(store=store)
             tracker.reset_calibration()
             self.assertIn("cleared", tracker.message)
 
     def test_calibration_cant_be_switched_during_a_tumble(self):
-        tracker = Tracker()
+        tracker = diagnostic_tracker()
         tracker.tumble_start()
         with self.assertRaises(ValueError):
             tracker.set_calibration(False)
 
     def test_cancelling_changes_nothing(self):
-        tracker = Tracker(offset=OFFSET, bias=GYRO_BIAS)
+        tracker = diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS)
         board = SimBoard(tracker)
         board.still(.5)
         tracker.tumble_start()

@@ -1,7 +1,4 @@
-// The Position card: where the ICM is, drawn in 3-D around the coil, plus home
-// and the calibration points.  Positions are cm from the coil's center (0), in
-// the ICM's own axes as it sat at home.  Drag to orbit, scroll to zoom,
-// double-click to reset.
+// Position, absolute coil field, matching choices and fitted poles in saved map axes.
 const POS_VIEW_START = {yaw: -35, pitch: 25, zoom: 1};
 const TRAIL_S = 4;
 const posCamera = {...POS_VIEW_START};
@@ -35,11 +32,10 @@ let posLatest = null, posState = null, posDrag = null;
     if (v.some(isNaN)) { $("calstatus").textContent = "Enter all three sensor coordinates, x, y and z, in centimeters from the coil center."; return; }
     send(path, {x: v[0], y: v[1], z: v[2]});
   };
-  $("homeset").onclick = () => xyz(["homex", "homey", "homez"], "/locate/home");
   $("calcapture").onclick = () => xyz(["calx", "caly", "calz"], "/locate/point");
   $("calcancel").onclick = () => send("/locate/cancel");
   $("calclear").onclick = () => {
-    if (confirm("Delete all recorded coil-calibration measurements and the fitted coil model? Sensor corrections and home coordinates will be kept. Position estimates require a new coil model.")) send("/locate/clear");
+    if (confirm("Delete all recorded coil-calibration measurements and the fitted coil model? Sensor corrections and saved map axes will be kept. Position estimates require a new coil model.")) send("/locate/clear");
   };
   $("calrows").addEventListener("click", e => {
     const i = e.target.dataset && e.target.dataset.remove;
@@ -47,84 +43,77 @@ let posLatest = null, posState = null, posDrag = null;
   });
 })();
 
+function showPositionChoices(candidates) {
+  const box = $("positionchoices");
+  while (box.children.length > candidates.length) box.lastChild.remove();
+  candidates.forEach((p, i) => {
+    let button = box.children[i];
+    if (!button) {
+      button = document.createElement("button"); box.appendChild(button);
+      button.onclick = () => {
+        const q = JSON.parse(button.dataset.position);
+        post("/locate/choose", {x: q[0], y: q[1], z: q[2], reference_id: button.dataset.reference});
+      };
+    }
+    button.textContent = "Choose position " + (i + 1) + ": " + displayVector(p).map(v => v.toFixed(1)).join(", ") + " cm";
+    button.dataset.position = JSON.stringify(p);
+    button.dataset.reference = posState && posState.reference_id;
+  });
+}
+
 function positionSample(sample) {
   posLatest = sample;
   const loc = sample && sample.locate, now = performance.now() / 1000;
   if (loc && loc.position) posTrail.push({t: now, p: loc.position});
   while (posTrail.length && posTrail[0].t < now - TRAIL_S) posTrail.shift();
-  const fmt = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1);
-  const b = measuredCoilField(sample, posState && posState.coil);
-  $("poscoilfield").textContent = b ? Math.hypot(...b).toFixed(1) + " µT" : "–";
+  const b = measuredCoilField(sample);
+  $("poscoilfield").textContent = b ? Math.hypot(...b).toFixed(1) + " uT" : "-";
+  $("historywarning").hidden = !(loc && loc.history_based);
+  $("historywarning").textContent = loc && loc.warning || "";
   if (!loc || !loc.position) {
-    $("posxyz").textContent = loc ? loc.why : "–";
-    ["posfromhome", "posfromcoil", "posprec"].forEach(id => { $(id).textContent = "–"; });
+    $("posxyz").textContent = loc ? loc.why : "Waiting for a coil-off ambient measurement.";
+    ["posfromcoil", "posprec"].forEach(id => { $(id).textContent = "-"; });
     $("posprec").className = "";
     return;
   }
-  const p = loc.position;
-  $("posxyz").textContent = "x " + fmt(p[0]) + "  y " + fmt(p[1]) + "  z " + fmt(p[2]) + " cm";
-  $("posfromhome").textContent = loc.from_home_cm.toFixed(1) + " cm";
+  $("posxyz").textContent = displayVector(loc.position).map((v, k) => "xyz"[k] + " " + v.toFixed(1)).join("  ") + " cm (displayed axes)";
   $("posfromcoil").textContent = loc.from_coil_cm.toFixed(1) + " cm";
-  $("posprec").textContent = loc.mm_per_ut >= 999 ? "999 mm per µT or more" : loc.mm_per_ut.toFixed(1) + " mm per µT";
-  $("posprec").className = loc.mm_per_ut <= 1.5 ? "good" : loc.mm_per_ut > 4 ? "bad" : "";
+  $("posprec").textContent = loc.mm_per_ut >= 999 ? "999 mm per uT or more" : loc.mm_per_ut.toFixed(1) + " mm per uT";
+  $("posprec").className = loc.mm_per_ut > 4 ? "bad" : "";
 }
 
 function positionState(state) {
   const s = state.locate;
+  if (!s || !state.coil_on || !posState || posState.frame_id !== s.frame_id || posState.reference_id !== s.reference_id) {
+    posLatest = null; posTrail.length = 0; $("historywarning").hidden = true;
+  }
   posState = s;
   $("poscard").style.display = s ? "block" : "none";
   if (!s) return;
   const n = s.points.length;
-  // fill the home boxes with what's set (or the old fit's guess), unless you're typing in them
-  const shown = s.home || s.suggested_home, homeKey = JSON.stringify(shown);
-  const typing = ["homex", "homey", "homez"].includes(document.activeElement && document.activeElement.id);
-  if (shown && !typing && $("homeset").dataset.key !== homeKey) {
-    $("homeset").dataset.key = homeKey;
-    ["homex", "homey", "homez"].forEach((id, k) => { $(id).value = shown[k]; });
-  }
-  $("homenow").textContent = s.home ? "Saved home coordinates (x, y, z): " + s.home.map(v => v.toFixed(1)).join(", ") + " cm"
-    : s.suggested_home ? "Home coordinates are not saved. The entries are estimates from an older coil model. Check them, then click Save sensor home coordinates."
-    : "Home coordinates are not saved.";
-  $("homeset").disabled = s.capturing;
-  $("calcapture").disabled = s.capturing || !s.home;
+  $("calcapture").disabled = s.capturing || !state.ambient_ready || !state.coil_on || s.legacy_calibration;
   $("calcancel").style.display = s.capturing ? "" : "none";
-  $("calclear").disabled = !n || s.capturing;
-  $("calstatus").textContent = s.message
-    || (!s.home ? (s.points_from_home
-          ? "The " + n + " saved measurements use the old sensor-home origin. Save the home coordinates to convert their positions to coordinates from the coil center."
-          : "Save the sensor-home coordinates before recording coil-calibration measurements.")
-      : s.capturing ? "Recording the field. Hold the board still: " + Math.round(s.capture_done * 100) + "%"
-      : s.fitting ? "Calculating the coil model from the recorded positions and fields…"
-      : n < s.min_points ? n + " measurements recorded. At least " + s.min_points + " are needed to calculate a coil model. Use different positions and heights."
-      : "");
+  $("calclear").disabled = (!n && !s.legacy_calibration) || s.capturing;
+  $("calstatus").textContent = s.message || (s.capturing ? "Recording the field. Hold still: " + Math.round(s.capture_done * 100) + "%"
+    : s.fitting ? "Fitting the coil model and building the field lookup table..."
+    : n < s.min_points ? n + " measurements recorded; at least " + s.min_points + " are needed. Use different positions and heights." : "");
   const c = s.coil;
-  $("coilsummary").textContent = !c ? "No coil model is available. Record magnetic fields at measured positions to calculate one."
-    : "The model places the coil center " + c.center_off_cm.toFixed(1) + " cm from the entered origin"
-      + (c.center_off_cm > 1 ? " (more than 1 cm: check the entered coordinates and the coil-model assumptions)" : "") + ". Modelled coil field strength at sensor home: "
-      + c.home_field_ut.toFixed(0) + " µT. Estimated movement per 1 µT field change at home: " + (c.home_mm_per_ut >= 999 ? "999 mm per µT or more"
-      : c.home_mm_per_ut.toFixed(1) + " mm per µT") + "."
-      + (c.home_mm_per_ut > 4 ? " The model indicates that position is hard to distinguish near home. Placing home near an end of the coil can help; moving the mark or coil requires new reference and coil-calibration measurements." : "");
-  const key = JSON.stringify(s.points);
-  const rows = $("calrows");
+  $("coilsummary").textContent = c ? "Fitted coil center is " + c.center_off_cm.toFixed(1) + " cm from the entered origin. "
+    + s.lookup_points + " model-generated lookup entries. North is red; south is blue."
+    : "No fitted coil model is ready. Record fields at measured positions after the coil-off startup step.";
+  showPositionChoices(state.coil_on ? s.candidates || [] : []);
+  const key = JSON.stringify(s.points), rows = $("calrows");
   if (rows.dataset.key === key) return;
-  rows.dataset.key = key;
-  rows.textContent = "";
+  rows.dataset.key = key; rows.textContent = "";
   s.points.forEach((pt, i) => {
-    const row = document.createElement("tr");
-    const mm = v => v === null || v === undefined ? "–" : v.toFixed(1);
+    const row = document.createElement("tr"), mm = v => v === null || v === undefined ? "-" : v.toFixed(1);
     [i + 1, ...pt.position.map(v => v.toFixed(1)), mm(pt.off_mm), mm(pt.left_out_mm)].forEach(text => {
-      const cell = document.createElement("td");
-      cell.textContent = text;
-      row.appendChild(cell);
+      const cell = document.createElement("td"); cell.textContent = text; row.appendChild(cell);
     });
     const cell = document.createElement("td"), del = document.createElement("button");
-    del.textContent = "×";
-    del.className = "remove";
-    del.dataset.remove = i;
+    del.textContent = "Remove"; del.className = "remove"; del.dataset.remove = i;
     del.setAttribute("aria-label", "Remove coil-calibration measurement " + (i + 1));
-    cell.appendChild(del);
-    row.appendChild(cell);
-    rows.appendChild(row);
+    cell.appendChild(del); row.appendChild(cell); rows.appendChild(row);
   });
 }
 
@@ -132,11 +121,11 @@ function drawPosition() {
   const canvas = $("posview");
   if (!posState || canvas.offsetParent === null) return;
   const [g, w, h] = fit(canvas);
-  const coil = posState.coil, range = posState.range_cm, home = posState.home;
+  const coil = posState.coil, range = posState.range_cm;
   const mid = [0, 0, 0];                               // the coil's center
   const u = Math.min(w, h) / (range * 3.4) * posCamera.zoom;
   const px = p => {
-    const c = cam(p, posCamera);
+    const c = cam(displayVector(p), posCamera);
     return [w / 2 + c[0] * u, h / 2 - c[1] * u, c[2]];
   };
   const line = (a, b, col, wd, dash) => {
@@ -158,23 +147,14 @@ function drawPosition() {
 
   // 0, the coil's center, and the axes
   const zero = px(mid);
-  [[6,0,0,"x"],[0,6,0,"y"],[0,0,6,"z"]].forEach(([x, y, z, n]) => {
-    const e = px([x, y, z]);
-    line(zero, e, css("--dim"), 1.5);
-    label(e, n, css("--dim"));
+  displayBasis().forEach((axis, k) => {
+    const e = px(axis.map(v => v * 6));
+    line(zero, e, css("--dim"), 1.5); label(e, "xyz"[k], css("--dim"));
   });
   g.fillStyle = css("--dim"); g.beginPath(); g.arc(zero[0], zero[1], 3, 0, 7); g.fill();
   label(zero, "coil center (0)", css("--dim"));
 
-  if (home) {
-    const hp = px(home);
-    g.strokeStyle = css("--ink"); g.lineWidth = 1.5;
-    g.beginPath(); g.arc(hp[0], hp[1], 5, 0, 7); g.stroke();
-    label(hp, "sensor home", css("--ink"));
-  }
-
-  // points from an old file are still measured from home, so they'd land in the wrong place
-  if (!posState.points_from_home) posState.points.forEach((pt, i) => {
+  posState.points.forEach((pt, i) => {
     const q = px(pt.position);
     g.strokeStyle = css("--pred"); g.lineWidth = 1.5;
     g.beginPath(); g.arc(q[0], q[1], 4, 0, 7); g.stroke();
@@ -190,7 +170,7 @@ function drawPosition() {
   const loc = posLatest && posLatest.locate;
   if (loc && loc.position) {
     const p = loc.position;
-    line(px(p), px([p[0], p[1], home ? home[2] : 0]), css("--dim"), 1, [3, 3]);    // drop to home's level
+    line(px(p), px([p[0], p[1], 0]), css("--dim"), 1, [3, 3]);    // drop to the displayed map plane
     drawBoard(g, px, p, posLatest.quat);
     const b = measuredCoilField(posLatest, coil);    // what the ICM reads from the coil
     if (b) {
@@ -220,16 +200,20 @@ function drawBox(g, px, center, axes, half, color) {
 }
 
 function drawCoil(g, px, coil) {
-  // two cores side by side: 5 cm along the axis, 4 cm across, 2 cm tall
-  const a = coil.axis;
+  const a = coil.axis, h = coil.half_length;
   let side = [a[1], -a[0], 0];
   if (Math.hypot(...side) < 0.1) side = [1, 0, 0];
-  const n = Math.hypot(...side);
-  side = side.map(v => v / n);
-  const up = [a[1]*side[2] - a[2]*side[1], a[2]*side[0] - a[0]*side[2], a[0]*side[1] - a[1]*side[0]];
-  drawBox(g, px, coil.center, [a, side, up], [2.5, 2, 1], css("--coil"));
-  const tip = px(coil.center.map((c, k) => c + a[k] * 3.2));
-  g.fillStyle = css("--ink"); g.font = "12px system-ui"; g.fillText("N", tip[0] - 4, tip[1] + 4);
+  side = side.map(v => v / Math.hypot(...side));
+  const up = [a[1]*side[2]-a[2]*side[1], a[2]*side[0]-a[0]*side[2], a[0]*side[1]-a[1]*side[0]];
+  const ends = [[1, "North", "#dc5454", -12], [-1, "South", "#4a88e4", 18]];
+  ends.forEach(([sign, name, color, labelOffset]) => {
+    const center = coil.center.map((c, k) => c + sign * a[k] * h / 2);
+    drawBox(g, px, center, [a, side, up], [h / 2, 2, 1], color);
+    const pole = sign > 0 ? coil.north_pole : coil.south_pole;
+    const tip = px(pole || coil.center.map((c, k) => c + sign * a[k] * h));
+    g.fillStyle = color; g.beginPath(); g.arc(tip[0], tip[1], 4, 0, 7); g.fill();
+    g.font = "bold 14px system-ui"; g.fillText(name, tip[0] + 7, tip[1] + labelOffset);
+  });
 }
 
 function drawBoard(g, px, p, q) {

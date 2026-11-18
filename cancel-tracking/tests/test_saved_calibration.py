@@ -11,6 +11,7 @@ from magtrack_src.calibration.store import CalibrationFile
 from magtrack_src.persistence import temporary_json, write_json_atomic
 from magtrack_src.position.coil_model import Coil
 from magtrack_src.position.locate import Locator
+from tests.test_home_free_tracking import FRAME
 
 
 IDENTITY = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
@@ -32,21 +33,18 @@ class SavedCalibration(unittest.TestCase):
         path.write_text(json.dumps(data), encoding="utf-8")
 
     def coil_data(self):
-        return {"home": [0, -13, 1], "coil": Coil((0, 0, 0), (0, 23400, 0), 2.2).as_dict(),
-                "points": [{"position": [2, -12, 1], "error": [1, 2, 3], "spread_ut": 0.2}],
+        return {"format_version": 2, "field_kind": "absolute_coil_field", "frame": dict(FRAME), "coil": Coil((0, 0, 0), (0, 23400, 0), 2.2).as_dict(),
+                "points": [{"position": [2, -12, 1], "coil_field_ut": [1, 2, 3], "spread_ut": 0.2}],
                 "checks": [[0.1, None]]}
 
     def assert_rejected_coil(self, data):
         self.write(self.path, data)
         original = self.path.read_bytes()
         locator = Locator(self.path)
-        self.assertIsNone(locator.home)
         self.assertIsNone(locator.coil)
         self.assertEqual(locator.points, [])
         self.assertEqual(locator.checks, [])
-        self.assertFalse(locator._from_home)
-        self.assertIsNone(locator._old_coil)
-        self.assertIsNone(locator._home_field)
+        self.assertIsNone(locator.frame)
         self.assertIn("was not loaded", locator.message)
         self.assertEqual(self.path.read_bytes(), original)
         json.dumps(locator.status(), allow_nan=False)
@@ -151,31 +149,30 @@ class SavedCalibration(unittest.TestCase):
 
     def test_current_coil_data_loads_without_rounding(self):
         data = self.coil_data()
-        data["points"][0]["error"][0] = 1.123456789
+        data["points"][0]["coil_field_ut"][0] = 1.123456789
         self.write(self.path, data)
         locator = Locator(self.path)
         self.assertIsNone(locator.message)
-        self.assertEqual(locator.points[0].field_difference_ut[0], 1.123456789)
+        self.assertEqual(locator.points[0].coil_field_ut[0], 1.123456789)
         self.assertEqual(locator.checks, [(0.1, None)])
         locator._save()
         self.assertEqual(json.loads(self.path.read_text()), data)
 
-    def test_old_coil_data_keeps_home_relative_coordinates_and_missing_spread_default(self):
-        data = self.coil_data()
-        del data["home"]
-        del data["checks"]
-        del data["points"][0]["spread_ut"]
+    def test_old_reference_relative_data_is_not_reinterpreted_or_overwritten(self):
+        data = {"home": [0, -13, 1], "points": [{"position": [1, 2, 3], "error": [4, 5, 6]}]}
         self.write(self.path, data)
+        before = self.path.read_bytes()
         locator = Locator(self.path)
-        self.assertTrue(locator._from_home)
-        self.assertIsNone(locator.coil)
-        self.assertIsNotNone(locator._old_coil)
-        self.assertEqual(locator.points[0].max_field_deviation_ut, 0)
-        self.assertIsNone(locator.message)
+        self.assertEqual(locator.points, [])
+        self.assertTrue(locator.status()["legacy_calibration"])
+        locator._save()
+        self.assertEqual(self.path.read_bytes(), before)
+        with self.assertRaises(ValueError):
+            locator.capture_point((1, 2, 3))
 
     def test_invalid_measurements_reject_whole_coil_record(self):
         for field, values in (("position", (None, [1, 2], [1, 2, 3, 4], [True, 1, 2], [1e308, 1, 2])),
-                              ("error", (None, [1, 2], [math.nan, 1, 2], [math.inf, 1, 2], "123")),
+                              ("coil_field_ut", (None, [1, 2], [math.nan, 1, 2], [math.inf, 1, 2], "123")),
                               ("spread_ut", (-1, None, True, "0.1", math.inf))):
             for bad in values:
                 with self.subTest(field=field, bad=bad):
@@ -185,7 +182,7 @@ class SavedCalibration(unittest.TestCase):
         for bad in (None, {}, [None], [[]]):
             self.assert_rejected_coil(dict(self.coil_data(), points=bad))
 
-    def test_invalid_model_and_home_are_not_partly_installed(self):
+    def test_invalid_model_and_frame_are_not_partly_installed(self):
         for field, values in (("center", (None, [1, 2], [0, 0, math.inf])),
                               ("s", ([0, 0, 0], [0, math.nan, 0], [0, 1e308, 0])),
                               ("half_length", (None, True, -1, 0, 0.1, 7, math.inf))):
@@ -196,11 +193,10 @@ class SavedCalibration(unittest.TestCase):
                     self.assert_rejected_coil(data)
         for bad in ([], False, 1):
             self.assert_rejected_coil(dict(self.coil_data(), coil=bad))
-        for bad in ([], [0, 0, 0], [1, 2], [0, math.nan, 0], [0, 1e308, 0]):
-            self.assert_rejected_coil(dict(self.coil_data(), home=bad))
-        # The field at a model pole is undefined, even when its parameters are finite.
+        for bad in (None, [], {}, {"id": "map"}):
+            self.assert_rejected_coil(dict(self.coil_data(), frame=bad))
         data = self.coil_data()
-        data["coil"]["center"] = [0, -10.8, 1]
+        data["frame"] = dict(FRAME, ambient_field=[0, 0, 40])
         self.assert_rejected_coil(data)
 
     def test_invalid_check_distances_cannot_leak_into_status_json(self):

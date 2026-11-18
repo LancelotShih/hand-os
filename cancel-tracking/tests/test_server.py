@@ -14,12 +14,12 @@ from magtrack_src.web.feed import Feed
 from magtrack_src.tracking.pair import Pair
 from magtrack_src.hardware.icm_loop import sensor_loop
 from magtrack_src.web.server import Handler, PAGE_FILES, make_server
-from magtrack_src.tracking.tracker import Tracker
+from tests.sim.sim_board import diagnostic_tracker
 
 
 class Server(unittest.TestCase):
     def setUp(self):
-        self.tracker, self.feed = Tracker(), Feed()
+        self.tracker, self.feed = diagnostic_tracker(), Feed()
         self.dir = tempfile.TemporaryDirectory()
         self.log = DataLog(self.dir.name)
         self.server = make_server("127.0.0.1", 0, Pair(self.tracker), self.feed, self.log)
@@ -209,7 +209,7 @@ class Loop(unittest.TestCase):
         stop = threading.Event()
         FakeIMU.stop = stop
         FakeIMU.opened = 0
-        tracker, feed = Tracker(), Feed()
+        tracker, feed = diagnostic_tracker(), Feed()
         with tempfile.TemporaryDirectory() as d:
             th = threading.Thread(target=sensor_loop,
                                   args=(1, 0x68, Pair(tracker), feed, DataLog(d), stop, FakeIMU))

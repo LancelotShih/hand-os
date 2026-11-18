@@ -4,13 +4,30 @@ let latest = null, state = null;
 let recordingRequestError = null;
 const HIST_S = 20;
 
-function post(path) { fetch(path, {method:"POST"}); }
-$("capture").onclick = () => post("/capture");
+async function post(path, body = {}) {
+  try {
+    const response = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Request failed");
+    $("requeststatus").textContent = ""; return true;
+  } catch (error) { $("requeststatus").textContent = error.message; return false; }
+}
+$("capture").onclick = () => {
+  if (confirm("Switch the electromagnet OFF and hold still. Is the coil off now?")) post("/ambient/capture", {coil_off: true});
+};
+$("coilon").onclick = () => {
+  const on = !(state && state.coil_on);
+  if (confirm(on ? "Switch the electromagnet ON. Confirm after it is powered." : "Pause tracking and switch the electromagnet OFF.")) post("/coil/power", {on});
+};
+$("newmap").onclick = () => {
+  if (confirm("Delete the coil measurements/model and start new map directions? Sensor corrections and recordings are kept. Measure the coil-off ambient field afterward.")) post("/map/new");
+};
+$("dismissreconnect").onclick = () => post("/warnings/reconnect/dismiss");
 $("tumble").onclick = () => post("/tumble/start");
 $("tumblefinish").onclick = () => post("/tumble/finish");
 $("tumblecancel").onclick = () => post("/tumble/cancel");
 $("reset").onclick = () => {
-  if (confirm("Clear the magnetometers' midpoint and scale corrections and the gyroscope zero-rate estimate? Recordings, MMC mounting alignment, and the coil's home coordinates, measurements, and model will be kept. A new reference measurement will start.")) {
+  if (confirm("Clear the magnetometers' midpoint and scale corrections and the gyroscope zero-rate estimate? Recordings and MMC mounting are kept. Tracking will require new sensor calibration and a new map.")) {
     post("/calibration/reset");
   }
 };
@@ -172,6 +189,13 @@ es.onmessage = e => {
 es.addEventListener("status", e => {
   state = JSON.parse(e.data);
   showShared();
+  $("startupstatus").textContent = !state.ambient_ready
+    ? "1. Switch the coil OFF. Calibrate magnetometers if needed, then measure the ambient field."
+    : !state.coil_on ? "2. Switch the coil ON, then confirm Coil is on to start tracking."
+    : "Tracking uses the saved coil model. Record measured positions if you need a new coil calibration.";
+  $("coilon").disabled = !state.ambient_ready;
+  $("coilon").textContent = state.coil_on ? "Pause tracking (coil off)" : "Coil is on - start tracking";
+  $("reconnectwarning").hidden = !state.reconnect_warning;
   positionState(state);
   SIDES.forEach(showSideState);
   // a sensor that's switched off gets no panel; one panel lays its view and charts side by side

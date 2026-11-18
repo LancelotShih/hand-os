@@ -14,6 +14,17 @@ GYRO_BIAS = (0.4, -0.3, 0.25)
 STEP_S = 0.002
 
 
+def diagnostic_tracker(*args, **kwargs):
+    """Offline cancellation fixture: automatically capture a comparison vector.
+
+    Application startup confirmation and absolute positioning are tested with
+    the real Tracker defaults in test_home_free_tracking and test_locate.
+    """
+    from magtrack_src.tracking.tracker import Tracker
+    kwargs.setdefault("require_coil_off", False)
+    return Tracker(*args, **kwargs)
+
+
 def axis_quat(axis, deg):
     n = math.sqrt(sum(a * a for a in axis))
     s = math.sin(math.radians(deg) / 2) / n

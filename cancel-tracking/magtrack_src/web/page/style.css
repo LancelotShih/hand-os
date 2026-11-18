@@ -89,3 +89,8 @@ button.remove { padding:0 8px; }
 
 .table-scroll { max-width:100%; overflow-x:auto; }
 .table-scroll table { min-width:600px; }
+
+[hidden] { display:none !important; }
+.warning { border:3px solid var(--bad); background:var(--card); color:var(--bad); padding:18px; font-size:18px; font-weight:700; border-radius:8px; }
+#requeststatus { color:var(--bad); }
+#positionchoices { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }

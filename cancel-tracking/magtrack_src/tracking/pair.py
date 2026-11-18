@@ -11,8 +11,12 @@ Used by: earth_cancel.py, hardware/icm_loop.py, web/server.py.  Uses: the Tracke
 """
 
 
+import threading
+
+
 class Pair:
     def __init__(self, icm, mmc=None, reader=None, locator=None):
+        self._setup_lock = threading.Lock()
         self.icm, self.mmc, self.reader, self.locator = icm, mmc, reader, locator
         self.reading = None                   # this step's fresh MMC reading, for the log
         self._last = None                     # newest MMC view sample
@@ -35,7 +39,27 @@ class Pair:
         if sample is not None:
             sample["mmc"] = self._last if self._mmc_on else None
             if self.locator is not None:
+                with self._setup_lock:
+                    current = self.icm.status()
+                    if (sample.get("reference_id") != current["reference_id"] or
+                        sample.get("correction_id") != current["correction_id"] or not current["ambient_ready"]):
+                        sample["ambient_ready"] = False
+                        sample["coil_field"] = None
+                    if not current["coil_on"]:
+                        sample["coil_on"] = False
+                        sample["coil_field"] = None
+                    frame = self.icm.map_frame()
+                    if frame is not None and sample.get("ambient_ready"):
+                        self.locator.configure_frame(frame)
                 sample["locate"] = self.locator.update(sample)
+                # Lookup runs outside Tracker's lock. A later control may have
+                # invalidated the sample while it was calculating.
+                current = self.icm.status()
+                if (sample.get("reference_id") != current["reference_id"] or
+                    sample.get("correction_id") != current["correction_id"] or
+                    not current["ambient_ready"] or not current["coil_on"]):
+                    sample["locate"] = {"position": None, "why": "Tracking setup changed. Waiting for a new reading.",
+                                        "history_based": False, "reconnect_warning": current["reconnect_warning"]}
         return sample
 
     def capture_reference_field(self):
@@ -43,13 +67,60 @@ class Pair:
         if self.mmc is not None:
             self.mmc.capture_reference_field()
 
+    def capture_ambient(self, coil_off):
+        if coil_off is not True:
+            raise ValueError("Confirm that the electromagnet is switched off.")
+        self.icm.capture_reference_field(coil_off_confirmed=True)
+        if self.mmc is not None:
+            self.mmc.capture_reference_field(coil_off_confirmed=True)
+        if self.locator is not None:
+            self.locator.forget_position()
+
+    def coil_power(self, on):
+        if not isinstance(on, bool):
+            raise ValueError("State whether the electromagnet is on or off.")
+        self.icm.set_coil_power(on)
+        if self.mmc is not None and self.mmc.status()["ambient_ready"]:
+            self.mmc.set_coil_power(on)
+        if not on and self.locator is not None:
+            self.locator.forget_position()
+
+    def choose_position(self, position, reference_id):
+        status = self.icm.status()
+        if not status["ambient_ready"] or not status["coil_on"] or reference_id != status["reference_id"]:
+            raise ValueError("Tracking setup changed. Finish the coil-off startup and select a current match.")
+        self.locator.choose_position(position, reference_id)
+
+    def capture_point(self, position):
+        status = self.icm.status()
+        if not status["ambient_ready"] or not status["coil_on"]:
+            raise ValueError("Finish the coil-off ambient measurement, then switch the coil on and confirm it before recording.")
+        self.locator.capture_point(position)
+
+    def new_map(self):
+        with self._setup_lock:
+            self.icm.new_map()
+            if self.mmc is not None:
+                self.mmc.new_map()
+            if self.locator is not None:
+                self.locator.clear_points(new_frame=True)
+
+    def dismiss_reconnect_warning(self):
+        self.icm.dismiss_reconnect_warning()
+        if self.mmc is not None:
+            self.mmc.dismiss_reconnect_warning()
+
     def toggle_calibration(self, side):
         tracker = {"icm": self.icm, "mmc": self.mmc}[side]
         if tracker is None:
             raise ValueError("The selected sensor is disabled.")
         tracker.set_calibration(not tracker.use_calibration)
+        if self.locator is not None:
+            self.locator.forget_position()
 
     def tumble_start(self):
+        if self.locator is not None:
+            self.locator.forget_position()
         self.icm.tumble_start()
         if self.mmc is not None:
             self.mmc.tumble_start()
@@ -76,6 +147,8 @@ class Pair:
                 self.mmc.tumble_cancel()
 
     def reset_calibration(self):
+        if self.locator is not None:
+            self.locator.forget_position()
         self.icm.reset_calibration()
         if self.mmc is not None:
             self.mmc.reset_calibration()

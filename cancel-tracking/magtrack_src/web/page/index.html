@@ -12,10 +12,19 @@
     <h1>Magnetic field and position tracking</h1><span class="sp"></span>
     <span id="logstat"></span><a id="loglink" target="_blank"></a>
     <button id="log">Start recording</button><button class="info" data-info="recordMeasurements"></button>
-    <button id="capture">Measure reference field at sensor home</button><button class="info" data-info="measureReferenceField"></button>
+    <button id="capture">Measure ambient field with coil off</button><button class="info" data-info="measureReferenceField"></button>
+    <button id="coilon">Coil is on - start tracking</button>
+    <button id="newmap">Start a new map</button>
     <button id="tumble">Calibrate magnetometers</button><button class="info" data-info="calibrateMagnetometers"></button>
     <button id="reset">Clear sensor calibration</button><button class="info" data-info="clearSensorCalibration"></button>
   </header>
+  <p id="startupstatus" role="status"></p><p id="requeststatus" role="alert"></p>
+  <div id="historywarning" class="warning" role="alert" hidden></div>
+  <div id="reconnectwarning" class="warning" role="alert" hidden>
+    Sensor reconnected. Continuing the last estimate. Turning during the gap was not measured.
+    Switch the coil off and measure the ambient field to recover orientation, or continue with this assumption.
+    <button id="dismissreconnect">Dismiss reconnect warning</button>
+  </div>
   <div class="card" id="tumblecard">
     <strong>Magnetometer calibration: rotate the board</strong>
     <p>Keep the coil off or far away. Rotate the whole sensor assembly through every orientation while staying near one spot. The field-direction coverage must be sufficient before you can calculate the corrections. The MMC must also cover enough directions if its mounting alignment is not yet known. <button class="info" data-info="calibrationDirectionCoverage"></button></p>
@@ -24,7 +33,7 @@
   </div>
   <div class="card shared">
     <div class="legend">
-      <span><i style="background:var(--pred)"></i>captured reference field</span>
+      <span><i style="background:var(--pred)"></i>captured ambient field</span>
       <span><i style="background:var(--meas)"></i>measured field</span>
       <span><i style="background:var(--ink)"></i>difference between fields</span>
       <span>Drag to rotate, scroll to zoom <button class="info" data-info="magneticFieldView"></button></span>
@@ -39,7 +48,7 @@
     </dl>
   </div>
   <div class="card" id="poscard">
-    <h2>Estimated sensor position</h2> <span class="hint">ICM coordinates in centimeters from the entered center of the electromagnet</span>
+    <h2>Estimated sensor position</h2> <span class="hint">Centimeters from the electromagnet center. No starting sensor position is required.</span>
     <div class="posgrid">
       <div>
         <canvas id="posview"></canvas>
@@ -54,27 +63,25 @@
           </select>
           <button id="posreset">Reset view</button>
         </div>
+        <p><span style="color:#dc5454">North pole</span> / <span style="color:#4a88e4">South pole</span>: polarity from the fitted model.</p>
+        <div class="calentry" id="displayaxes"><strong>Displayed axes:</strong>
+          <label>x <select id="displayx" aria-label="Displayed x axis"></select></label>
+          <label>y <select id="displayy" aria-label="Displayed y axis"></select></label>
+          <label>z <select id="displayz" aria-label="Displayed z axis"></select></label>
+          <button id="axesreset">Reset displayed axes</button>
+        </div>
+        <p class="hint">Swap or reverse the view and position readout here. Calibration entries still use the saved sensor axes. Display settings do not change calibration.</p>
       </div>
       <div>
         <div class="big" id="posxyz">&ndash;</div>
         <dl>
-          <dt>Distance from sensor home <button class="info" data-info="distanceFromSensorHome"></button></dt><dd id="posfromhome">&ndash;</dd>
           <dt>Distance from the entered coil center <button class="info" data-info="distanceFromCoilCenter"></button></dt><dd id="posfromcoil">&ndash;</dd>
           <dt>Estimated movement per 1 &micro;T field change <button class="info" data-info="positionChangePerFieldChange"></button></dt><dd id="posprec">&ndash;</dd>
           <dt>Estimated coil field strength <button class="info" data-info="estimatedCoilFieldStrength"></button></dt><dd id="poscoilfield">&ndash;</dd>
         </dl>
-        <h3>Sensor home: reference measurement position <button class="info" data-info="sensorHomeCoordinates"></button></h3>
-        <p class="hint">The physical mark where the board sits for reference measurements. Enter its coordinates from the coil center. Saving coordinates does not measure the magnetic field.</p>
-        <div class="calentry">
-          <label>x <input id="homex" type="number" step="0.5" inputmode="decimal"></label>
-          <label>y <input id="homey" type="number" step="0.5" inputmode="decimal"></label>
-          <label>z <input id="homez" type="number" step="0.5" inputmode="decimal"></label>
-          <span class="hint">cm from the coil</span>
-          <button id="homeset">Save sensor home coordinates</button>
-        </div>
-        <div class="hint" id="homenow"></div>
+        <div id="positionchoices" aria-label="Matching starting positions"></div>
         <h3>Coil model calibration measurements <button class="info" data-info="coilCalibrationMeasurements"></button></h3>
-        <p class="hint">Hold the sensor at a position whose coordinates you measured from the coil center. Keep the board in its sensor-home orientation, enter the coordinates, then record the field.</p>
+        <p class="hint">Hold the sensor at a position whose coordinates you measured from the coil center. Enter coordinates in the hardware axes saved at the first coil-off measurement, then record the field with the coil ON. The board may turn; orientation correction accounts for that.</p>
         <div class="calentry">
           <label>x <input id="calx" type="number" step="0.5" inputmode="decimal"></label>
           <label>y <input id="caly" type="number" step="0.5" inputmode="decimal"></label>
@@ -126,7 +133,7 @@
         <dt>Largest angle between fields since reference measurement <button class="info" data-info="largestAngleBetweenFields"></button></dt><dd class="peakdeg">&ndash;</dd>
         <dt>Largest field difference since reference measurement <button class="info" data-info="largestFieldDifference"></button></dt><dd class="peak">&ndash;</dd>
         <dt>Measured field strength <button class="info" data-info="measuredFieldStrength"></button></dt><dd class="mm">&ndash;</dd>
-        <dt>Captured reference field strength <button class="info" data-info="referenceFieldStrength"></button></dt><dd class="pm">&ndash;</dd>
+        <dt>Captured ambient field strength <button class="info" data-info="referenceFieldStrength"></button></dt><dd class="pm">&ndash;</dd>
         <dt>Time since reference measurement <button class="info" data-info="timeSinceReferenceMeasurement"></button></dt><dd class="age">&ndash;</dd>
         <dt>Fitted sensor midpoints, x / y / z (&micro;T) <button class="info" data-info="sensorMidpoints"></button></dt><dd class="off">&ndash;</dd>
         <dt>Estimated sensor mounting tilt <button class="info" data-info="estimatedSensorMountingTilt"></button></dt><dd class="tilt">&ndash;</dd>
@@ -150,6 +157,7 @@
 <script src="sweep_view.js"></script>
 <script src="chart.js"></script>
 <script src="field_view.js"></script>
+<script src="display_axes.js"></script>
 <script src="position_view.js"></script>
 <script src="app.js"></script>
 <script src="info.js"></script>

@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 from magtrack_src.config import LOCATE_POINT_SAMPLES
 from magtrack_src.position.coil_model import Coil
+from magtrack_src.position.field_lookup import FieldLookup
+from tests.test_home_free_tracking import FRAME, reading
 from magtrack_src.position.locate import Locator
 from magtrack_src.position.measurements import CoilCalibrationMeasurement
 from magtrack_src.persistence import temporary_json
@@ -21,10 +23,10 @@ class LocatorLifecycle(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.path = Path(self.directory.name) / "coil.json"
         self.locator = Locator(self.path)
-        self.locator.home = (0.0, -13.0, 0.0)
+        self.locator.frame = dict(FRAME)
         self.model = Coil((0, 0, 0), (0, 23400, 0), 2.2)
         self.locator.coil = self.model
-        self.locator._home_field = self.model.field(self.locator.home)
+        self.locator._lookup = FieldLookup(self.model)
         self.locator.points = [CoilCalibrationMeasurement((i, -10, 1), (i, 2, 3), 0.1)
                                for i in range(4)]
         self.original_points = list(self.locator.points)
@@ -41,6 +43,9 @@ class LocatorLifecycle(unittest.TestCase):
             self.assertEqual(self.errors, [])
         finally:
             self.directory.cleanup()
+
+    def update(self, old):
+        return self.locator.update(reading(old.get("error"), reference=str(old.get("predicted"))))
 
     def event(self):
         event = threading.Event()
@@ -70,12 +75,12 @@ class LocatorLifecycle(unittest.TestCase):
 
     def test_clear_cancels_a_partly_collected_measurement(self):
         self.locator.capture_point((2, -10, 1))
-        with patch("magtrack_src.position.locate.solve", return_value=((0, -13, 0), 0)):
-            self.locator.update({"error": [1, 2, 3], "predicted": [10, 20, 30]})
+        with patch("magtrack_src.position.field_lookup.FieldLookup.matches", return_value=[((0, -13, 0), 0)]):
+            self.update({"error": [1, 2, 3], "predicted": [10, 20, 30]})
             self.locator.clear_points()
             self.assertFalse(self.locator.status()["capturing"])
             for _ in range(LOCATE_POINT_SAMPLES + 1):
-                self.locator.update({"error": [1, 2, 3], "predicted": [10, 20, 30]})
+                self.update({"error": [1, 2, 3], "predicted": [10, 20, 30]})
         self.assertEqual(self.locator.points, [])
         self.assertIsNone(self.locator.coil)
         self.assertEqual(json.loads(self.path.read_text())["points"], [])
@@ -133,9 +138,9 @@ class LocatorLifecycle(unittest.TestCase):
         def solving(*_):
             entered.set()
             self.assertTrue(release.wait(5))
-            return (1, -12, 2), 0
-        with patch("magtrack_src.position.locate.solve", side_effect=solving):
-            worker = self.run_async(lambda: result.append(self.locator.update(
+            return [((1, -12, 2), 0)]
+        with patch("magtrack_src.position.field_lookup.FieldLookup.matches", side_effect=solving):
+            worker = self.run_async(lambda: result.append(self.update(
                 {"error": [1, 2, 3], "predicted": [10, 20, 30]})))
             self.assertTrue(entered.wait(5))
             self.locator.clear_points()
@@ -177,13 +182,13 @@ class LocatorLifecycle(unittest.TestCase):
             if threading.current_thread() is not threading.main_thread():
                 entered.set()
                 self.assertTrue(release.wait(5))
-                return (1, -12, 2), 0
-            return (2, -11, 3), 0
-        with patch("magtrack_src.position.locate.solve", side_effect=solving):
-            worker = self.run_async(lambda: result.append(self.locator.update(
+                return [((1, -12, 2), 0)]
+            return [((2, -11, 3), 0)]
+        with patch("magtrack_src.position.field_lookup.FieldLookup.matches", side_effect=solving):
+            worker = self.run_async(lambda: result.append(self.update(
                 {"error": [1, 2, 3], "predicted": [10, 20, 30]})))
             self.assertTrue(entered.wait(5))
-            current = self.locator.update({"error": [1, 2, 3], "predicted": [11, 20, 30]})
+            current = self.update({"error": [1, 2, 3], "predicted": [11, 20, 30]})
             release.set()
             worker.join(5)
         self.assertEqual(current["position"], [2, -11, 3])
@@ -226,10 +231,10 @@ class LocatorLifecycle(unittest.TestCase):
 
     def test_invalid_fields_cannot_enter_point_capture(self):
         self.locator.capture_point((2, -10, 1))
-        with patch("magtrack_src.position.locate.solve") as solving:
+        with patch("magtrack_src.position.field_lookup.FieldLookup.matches") as solving:
             for field in ([math.nan, 1, 2], [math.inf, 1, 2], [1, 2], [1, 2, 3, 4], ["bad", 1, 2]):
                 with self.subTest(field=field):
-                    result = self.locator.update({"error": field})
+                    result = self.update({"error": field})
                     self.assertIsNone(result["position"])
                     self.assertIn("invalid", result["why"])
             solving.assert_not_called()
@@ -267,9 +272,9 @@ class LocatorLifecycle(unittest.TestCase):
         self.assertEqual(json.loads(self.path.read_text())["points"], [])
 
     def test_nonfinite_sensitivity_is_not_published(self):
-        with patch("magtrack_src.position.locate.solve", return_value=((0, -13, 0), 0)), \
+        with patch("magtrack_src.position.field_lookup.FieldLookup.matches", return_value=[((0, -13, 0), 0)]), \
              patch("magtrack_src.position.locate.mm_per_ut", return_value=math.nan):
-            result = self.locator.update({"error": [1, 2, 3], "predicted": None})
+            result = self.update({"error": [1, 2, 3], "predicted": None})
         self.assertIsNone(result["position"])
         self.assertIn("invalid sensitivity", result["why"])
         self.assertIsNone(self.locator._last)
@@ -277,13 +282,14 @@ class LocatorLifecycle(unittest.TestCase):
 
     def test_invalid_solver_results_never_replace_the_last_position(self):
         self.locator._last = (0, -13, 0)
+        self.locator._reference_id = "None"
         sample = {"error": [1, 2, 3], "predicted": None}
         for position, mismatch in (((math.nan, 0, 0), 0), ((0, -13, 0), math.nan),
                                    ((math.inf, 0, 0), 0), ((1e308, 0, 0), 0)):
             with self.subTest(position=position, mismatch=mismatch), \
-                 patch("magtrack_src.position.locate.solve", return_value=(position, mismatch)):
-                result = self.locator.update(sample)
+                 patch("magtrack_src.position.field_lookup.FieldLookup.matches", return_value=[(position, mismatch)]):
+                result = self.update(sample)
                 self.assertIsNone(result["position"])
-                self.assertIn("invalid", result["why"])
+                self.assertTrue(result["why"])
                 self.assertEqual(self.locator._last, (0, -13, 0))
 

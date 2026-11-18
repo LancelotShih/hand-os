@@ -17,7 +17,7 @@ from magtrack_src.hardware.mmc5983 import COUNTS_PER_UT, counts, field_ut
 from magtrack_src.hardware.mmc_loop import MmcReader
 from magtrack_src.tracking.pair import Pair
 from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard
-from magtrack_src.tracking.tracker import Tracker
+from tests.sim.sim_board import diagnostic_tracker
 
 MMC_OFFSET = (31.0, -12.0, 44.0)
 
@@ -67,8 +67,8 @@ class FakeReader:
 
 def pair_on_board(axes=QUARTER_TILTED, log=None):
     reader = FakeReader(axes)
-    pair = Pair(Tracker(offset=OFFSET, bias=GYRO_BIAS),
-                Tracker(bias=GYRO_BIAS, fit_mounting=True, block_samples=3), reader)
+    pair = Pair(diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS),
+                diagnostic_tracker(bias=GYRO_BIAS, fit_mounting=True, block_samples=3), reader)
     board = SimBoard(pair, gyro_bias=GYRO_BIAS)
     reader.board = board
     return pair, board, reader
@@ -76,7 +76,7 @@ def pair_on_board(axes=QUARTER_TILTED, log=None):
 
 class Mounting(unittest.TestCase):
     def tumble(self, chip_to_board, n=1500, noise=0.1):
-        board = SimBoard(Tracker(), gyro_bias=(0, 0, 0))
+        board = SimBoard(diagnostic_tracker(), gyro_bias=(0, 0, 0))
         points, quats = [], []
         random.seed(2)
         for i in range(n):
@@ -200,7 +200,7 @@ class SideBySide(unittest.TestCase):
         self.assertFalse(pair.mmc.status()["have_offset"])
 
     def test_no_mmc_at_all(self):
-        pair = Pair(Tracker(offset=OFFSET, bias=GYRO_BIAS))
+        pair = Pair(diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS))
         board = SimBoard(pair, gyro_bias=GYRO_BIAS)
         board.still(1.0)
         self.assertIsNone(pair.status()["mmc"])
@@ -238,7 +238,7 @@ class SideBySide(unittest.TestCase):
 
     def test_a_missing_mmc_cant_be_switched(self):
         with self.assertRaises(ValueError):
-            Pair(Tracker()).toggle_calibration("mmc")
+            Pair(diagnostic_tracker()).toggle_calibration("mmc")
 
     def test_reset_clears_both(self):
         pair, _, _ = self.calibrate()
@@ -251,8 +251,8 @@ class SideBySide(unittest.TestCase):
     def test_with_the_mounting_known_the_mmc_cancels_earth_with_no_tumble(self):
         reader = FakeReader(QUARTER_TILTED)
         reader.offset = (0.0, 0.0, 0.0)            # SET/RESET left nothing behind
-        pair = Pair(Tracker(offset=OFFSET, bias=GYRO_BIAS),
-                    Tracker(bias=GYRO_BIAS, axes=QUARTER_TILTED, fit_mounting=True,
+        pair = Pair(diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS),
+                    diagnostic_tracker(bias=GYRO_BIAS, axes=QUARTER_TILTED, fit_mounting=True,
                             block_samples=3, use_calibration=False), reader)
         board = SimBoard(pair, gyro_bias=GYRO_BIAS)
         reader.board = board

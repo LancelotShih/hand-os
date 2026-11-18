@@ -21,6 +21,7 @@ PAGE_FILES = {
     "/sweep_view.js": ("sweep_view.js", "text/javascript; charset=utf-8"),
     "/chart.js": ("chart.js", "text/javascript; charset=utf-8"),
     "/field_view.js": ("field_view.js", "text/javascript; charset=utf-8"),
+    "/display_axes.js": ("display_axes.js", "text/javascript; charset=utf-8"),
     "/position_view.js": ("position_view.js", "text/javascript; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/info.js": ("info.js", "text/javascript; charset=utf-8"),
@@ -80,8 +81,10 @@ class Handler(BaseHTTPRequestHandler):
         if loc is None:
             return {}
         xyz = lambda b: [b.get("x"), b.get("y"), b.get("z")] if all(k in b for k in "xyz") else []
-        return {"/locate/home": lambda b: loc.set_home(xyz(b)),
-                "/locate/point": lambda b: loc.capture_point(xyz(b)),
+        return {"/ambient/capture": lambda b: self.server.tracker.capture_ambient(b.get("coil_off")),
+                "/coil/power": lambda b: self.server.tracker.coil_power(b.get("on")),
+                "/locate/choose": lambda b: self.server.tracker.choose_position(xyz(b), b.get("reference_id")),
+                "/locate/point": lambda b: self.server.tracker.capture_point(xyz(b)),
                 "/locate/cancel": lambda b: loc.cancel_capture(),
                 "/locate/remove": lambda b: loc.remove_point(int(b.get("index", -1))),
                 "/locate/clear": lambda b: loc.clear_points()}
@@ -93,11 +96,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with_body(self._body())
                 body = {"ok": True}
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError, OSError) as e:
                 body = {"ok": False, "error": str(e)}
             self._send(json.dumps(body).encode(), "application/json")
             return
-        fn = {"/capture": t.capture_reference_field,
+        fn = {"/map/new": t.new_map,
+              "/warnings/reconnect/dismiss": t.dismiss_reconnect_warning,
               "/calibration/icm/toggle": lambda: t.toggle_calibration("icm"),
               "/calibration/mmc/toggle": lambda: t.toggle_calibration("mmc"),
               "/tumble/start": t.tumble_start, "/tumble/finish": t.tumble_finish,

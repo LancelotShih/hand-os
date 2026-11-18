@@ -124,9 +124,7 @@ function drawField(g, px, coil, mid, range) {
   });
 }
 
-// The coil's field the ICM measures right now, in µT, in the home axes: the
-// error is that field minus the coil's field at home.  Null before a coil fit.
-function measuredCoilField(sample, coil) {
-  if (!sample || !sample.error || !coil || !coil.home_field) return null;
-  return sample.error.map((v, k) => v + coil.home_field[k]);
+// The full-precision, ambient-subtracted field comes directly from tracking.
+function measuredCoilField(sample) {
+  return sample && sample.coil_field || null;
 }
