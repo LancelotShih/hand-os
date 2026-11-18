@@ -2,6 +2,7 @@
 const POS_VIEW_START = {yaw: -35, pitch: 25, zoom: 1};
 const TRAIL_S = 4;
 const COIL_LENGTH_CM = 5, COIL_WIDTH_CM = 4, COIL_HEIGHT_CM = 2;
+const COIL_DRAWING_SCALE = 0.5;
 const BOARD_HALF_SIZE_CM = 0.6, BOARD_HALF_THICKNESS_CM = 0.08;
 const POSITION_GRID_SPACING_CM = 5;
 const posCamera = {...POS_VIEW_START};
@@ -193,16 +194,21 @@ function drawPosition() {
 
 function drawPositionGrid(g, px, range, line, label) {
   const limit = Math.floor(range / POSITION_GRID_SPACING_CM) * POSITION_GRID_SPACING_CM;
-  g.globalAlpha = 0.8;
+  g.globalAlpha = 0.35;
   for (let v = -limit; v <= limit; v += POSITION_GRID_SPACING_CM) {
     const color = v === 0 ? css("--dim") : css("--line");
     const width = v === 0 ? 1.5 : 1;
     line(px([v, -limit, 0]), px([v, limit, 0]), color, width);
     line(px([-limit, v, 0]), px([limit, v, 0]), color, width);
   }
-  g.globalAlpha = 1;
+  g.globalAlpha = 0.8;
+  for (let v = -limit; v <= limit; v += POSITION_GRID_SPACING_CM) {
+    label(px([v, -limit, 0]), String(v), css("--dim"));
+    if (v !== -limit) label(px([-limit, v, 0]), String(v), css("--dim"));
+  }
   label(px([limit, 0, 0]), "x (cm)", css("--dim"));
   label(px([0, limit, 0]), "y (cm)", css("--dim"));
+  g.globalAlpha = 1;
 }
 
 function drawBox(g, px, center, axes, half, color) {
@@ -229,13 +235,17 @@ function drawCoil(g, px, coil) {
   side = side.map(v => v / Math.hypot(...side));
   const up = [a[1]*side[2]-a[2]*side[1], a[2]*side[0]-a[0]*side[2], a[0]*side[1]-a[1]*side[0]];
   const ends = [[1, "North", "#dc5454", -12], [-1, "South", "#4a88e4", 18]];
-  const halfLength = COIL_LENGTH_CM / 2;
+  const halfLength = COIL_LENGTH_CM * COIL_DRAWING_SCALE / 2;
   ends.forEach(([sign, name, color, labelOffset]) => {
     const center = a.map(v => sign * v * halfLength / 2);
-    drawBox(g, px, center, [a, side, up], [halfLength / 2, COIL_WIDTH_CM / 2, COIL_HEIGHT_CM / 2], color);
+    drawBox(g, px, center, [a, side, up], [
+      halfLength / 2,
+      COIL_WIDTH_CM * COIL_DRAWING_SCALE / 2,
+      COIL_HEIGHT_CM * COIL_DRAWING_SCALE / 2
+    ], color);
     const tip = px(a.map(v => sign * v * halfLength));
-    g.fillStyle = color; g.beginPath(); g.arc(tip[0], tip[1], 4, 0, 7); g.fill();
-    g.font = "bold 14px system-ui"; g.fillText(name, tip[0] + 7, tip[1] + labelOffset);
+    g.fillStyle = color; g.beginPath(); g.arc(tip[0], tip[1], 2, 0, 7); g.fill();
+    g.font = "bold 11px system-ui"; g.fillText(name, tip[0] + 5, tip[1] + labelOffset / 2);
   });
 }
 
