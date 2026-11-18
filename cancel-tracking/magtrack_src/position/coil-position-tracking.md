@@ -26,15 +26,14 @@ lookup matching from history-based position selection is still planned work.
   middle a position can't be pinned down (`mm_per_ut` becomes very large). Home is currently
   broadside. A large movement-per-field-change value and the nominal working range do not stop position estimates from being published.
 
-There is no explicit blind-spot rejection. `solve` chooses a matching estimate
-using its starting point and the nearer mirror solution; `Locator.update` rejects
-excessive field mismatch, not ambiguity. The output can therefore contain a
-position even when several places match equally well. `mm_per_ut` describes local
-sensitivity and does not identify the separate mirrored answer.
-
-The current output has no history-assumption flag or dedicated blind-spot
-warning. The page colors local sensitivity, but the solver still chooses a
-position from history. Startup uses entered home coordinates.
+At startup, if the measured field matches multiple positions, the page asks the
+user to choose the sensor's actual position. The model's field is symmetric
+about the coil center, so mirrored positions can have the same reading. After
+the choice, `Locator.update` uses the previous position to choose among matching
+locations and marks ambiguous or locally weakly determined estimates with a
+history-based warning. This does not reject estimates in a blind spot:
+`mm_per_ut` describes local sensitivity and cannot identify the separate
+mirrored answer.
 
 `set_home` changes entered coordinates and refits; it does not take a reference
 reading. Moving the physical mark changes the field used as the reference, unlike

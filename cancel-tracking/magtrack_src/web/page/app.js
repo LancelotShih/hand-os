@@ -17,7 +17,10 @@ $("capture").onclick = () => {
 };
 $("coilon").onclick = () => {
   const on = !(state && state.coil_on);
-  if (confirm(on ? "Switch the electromagnet ON. Confirm after it is powered." : "Pause tracking and switch the electromagnet OFF.")) post("/coil/power", {on});
+  const prompt = on
+    ? "Switch the electromagnet ON manually, then confirm to start tracking."
+    : "Switch the electromagnet OFF manually, then confirm to pause tracking.";
+  if (confirm(prompt)) post("/coil/power", {on});
 };
 $("newmap").onclick = () => {
   if (confirm("Delete the coil measurements/model and start new map directions? Sensor corrections and recordings are kept. Measure the coil-off ambient field afterward.")) post("/map/new");
@@ -191,10 +194,12 @@ es.addEventListener("status", e => {
   showShared();
   $("startupstatus").textContent = !state.ambient_ready
     ? "1. Switch the coil OFF. Calibrate magnetometers if needed, then measure the ambient field."
-    : !state.coil_on ? "2. Switch the coil ON, then confirm Coil is on to start tracking."
-    : "Tracking uses the saved coil model. Record measured positions if you need a new coil calibration.";
+    : !state.coil_on ? "2. Switch the electromagnet ON manually, then click Start tracking to confirm and begin."
+    : "Tracking is active by your confirmation; coil power is not sensed or controlled by this app.";
   $("coilon").disabled = !state.ambient_ready;
-  $("coilon").textContent = state.coil_on ? "Pause tracking (coil off)" : "Coil is on - start tracking";
+  $("coilon").textContent = state.coil_on
+    ? "Pause tracking (after switching the coil off)"
+    : "Start tracking (after switching the coil on)";
   $("reconnectwarning").hidden = !state.reconnect_warning;
   positionState(state);
   SIDES.forEach(showSideState);

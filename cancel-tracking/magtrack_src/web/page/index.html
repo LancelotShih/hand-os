@@ -13,7 +13,7 @@
     <span id="logstat"></span><a id="loglink" target="_blank"></a>
     <button id="log">Start recording</button><button class="info" data-info="recordMeasurements"></button>
     <button id="capture">Measure ambient field with coil off</button><button class="info" data-info="measureReferenceField"></button>
-    <button id="coilon">Coil is on - start tracking</button>
+    <button id="coilon">Start tracking (after switching the coil on)</button>
     <button id="newmap">Start a new map</button>
     <button id="tumble">Calibrate magnetometers</button><button class="info" data-info="calibrateMagnetometers"></button>
     <button id="reset">Clear sensor calibration</button><button class="info" data-info="clearSensorCalibration"></button>
@@ -54,16 +54,18 @@
         <canvas id="posview"></canvas>
         <div class="legend">
           <span><i style="background:var(--meas)"></i>coil field estimated from the reading</span>
-          <span><i style="background:var(--field)"></i>coil field calculated by the model <button class="info" data-info="estimatedAndModelledCoilFields"></button></span>
+          <span><i style="background:linear-gradient(90deg,hsl(220 90% 55%),hsl(0 90% 55%))"></i>model field arrows: blue weaker, red stronger</span>
+          <label><input id="posfieldtoggle" type="checkbox" checked> Show model field</label>
+          <label><input id="posgridtoggle" type="checkbox"> Show XY grid (5 cm)</label>
+          <span>Coil field model <button class="info" data-info="estimatedAndModelledCoilFields"></button></span>
           <span>Drag to rotate, scroll to zoom <button class="info" data-info="positionView"></button></span>
-          <select id="posfield" aria-label="How to draw the coil's field">
+          <select id="posfield" aria-label="Model field drawing style">
             <option value="arrows">Field arrows</option>
             <option value="lines">Field lines</option>
-            <option value="off">No field</option>
           </select>
           <button id="posreset">Reset view</button>
         </div>
-        <p><span style="color:#dc5454">North pole</span> / <span style="color:#4a88e4">South pole</span>: polarity from the fitted model.</p>
+        <p>The coil body is shown at its 50 × 40 × 20 mm physical size, centered at (0,0,0). <span style="color:#dc5454">North</span> / <span style="color:#4a88e4">South</span> show fitted polarity.</p>
         <div class="calentry" id="displayaxes"><strong>Displayed axes:</strong>
           <label>x <select id="displayx" aria-label="Displayed x axis"></select></label>
           <label>y <select id="displayy" aria-label="Displayed y axis"></select></label>

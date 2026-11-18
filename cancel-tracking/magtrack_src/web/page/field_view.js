@@ -4,17 +4,20 @@
 // in µT, with p in cm from the measured coil center, in the reference axes.
 // Drawn as arrows on a grid
 // through the cube, or as field lines from the north pole round to the south.
-const FIELD_GRID = 7;                  // arrows along each edge of the cube
+const FIELD_GRID = 12;                 // about five times as many 3D arrows as the previous 7-point grid
 const FIELD_LINE_COUNT = 26;           // field lines leaving the north pole
 const FIELD_STEP_CM = 0.25;            // field line drawing step
 const FIELD_LOW_UT = 5, FIELD_HIGH_UT = 500;   // arrows grow from shortest to longest over this, on a log scale
-let fieldMode = "arrows";
+let fieldMode = "arrows", fieldVisible = true;
 let fieldCache = {key: null};
 
 (function fieldControls() {
   const pick = $("posfield");
   pick.value = fieldMode;
   pick.onchange = () => { fieldMode = pick.value; };
+  const toggle = $("posfieldtoggle");
+  toggle.checked = fieldVisible;
+  toggle.onchange = () => { fieldVisible = toggle.checked; };
 })();
 
 function coilPoles(coil) {
@@ -53,7 +56,7 @@ function buildField(coil, mid, range) {
     if (nearCoil(coil, p, 2)) continue;
     const b = coilField(coil, p);
     if (!b) continue;
-    const size = Math.hypot(...b), half = fieldLength(size, step * 0.8) / 2;
+    const size = Math.hypot(...b), half = fieldLength(size, step * 0.55) / 2;
     const dir = b.map(v => v / size);
     arrows.push({from: p.map((v, k) => v - dir[k] * half), to: p.map((v, k) => v + dir[k] * half),
                  strength: Math.min(1, Math.max(0, Math.log(size / FIELD_LOW_UT) / Math.log(FIELD_HIGH_UT / FIELD_LOW_UT)))});
@@ -99,13 +102,17 @@ function fieldArrow(g, a, b, color, width, head) {
   g.closePath(); g.fill();
 }
 
+function fieldColor(strength) {
+  return `hsl(${220 * (1 - strength)}, 90%, 55%)`;
+}
+
 function drawField(g, px, coil, mid, range) {
-  if (fieldMode === "off" || !coil.strength) return;
+  if (!fieldVisible || !coil.strength) return;
   const f = fieldFor(coil, mid, range), color = css("--field");
   if (fieldMode === "arrows") {
     for (const a of f.arrows) {
-      g.globalAlpha = 0.25 + 0.6 * a.strength;
-      fieldArrow(g, px(a.from), px(a.to), color, 1.2, 6);
+      g.globalAlpha = 0.9;
+      fieldArrow(g, px(a.from), px(a.to), fieldColor(a.strength), 1, 4);
     }
   } else {
     g.globalAlpha = 0.55;

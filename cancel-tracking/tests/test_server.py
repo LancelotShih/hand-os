@@ -9,10 +9,12 @@ import urllib.error
 import urllib.request
 from unittest.mock import Mock, patch
 
+from magtrack_src.config import I2C_RETRY_DELAY_S
 from magtrack_src.recording.data_log import DataLog
 from magtrack_src.web.feed import Feed
 from magtrack_src.tracking.pair import Pair
 from magtrack_src.hardware.icm_loop import sensor_loop
+from magtrack_src.hardware.mmc_loop import MmcReader
 from magtrack_src.web.server import Handler, PAGE_FILES, make_server
 from tests.sim.sim_board import diagnostic_tracker
 
@@ -89,6 +91,7 @@ class Server(unittest.TestCase):
     def test_state(self):
         state = json.loads(self.get("/state"))
         self.assertEqual(state["capturing"], "earth")
+        self.assertIn("orientation_quat", state)
         self.assertEqual(state["pass_ut"], 5.0)
 
     def test_zero_is_gone(self):
@@ -204,6 +207,19 @@ class FakeIMU:
         pass
 
 
+class StopAfterWait:
+    def __init__(self):
+        self.stopped = False
+        self.waits = []
+
+    def is_set(self):
+        return self.stopped
+
+    def wait(self, delay):
+        self.waits.append(delay)
+        self.stopped = True
+
+
 class Loop(unittest.TestCase):
     def test_reconnects_and_tells_the_tracker(self):
         stop = threading.Event()
@@ -219,3 +235,15 @@ class Loop(unittest.TestCase):
         self.assertTrue(feed.connected)
         self.assertEqual(FakeIMU.opened, 2)
         self.assertIn("reconnected", tracker.message)
+
+    def test_both_sensor_loops_retry_after_the_configured_delay(self):
+        for loop_name in ("icm", "mmc"):
+            with self.subTest(sensor=loop_name), patch("builtins.print"):
+                stop = StopAfterWait()
+                open_sensor = Mock(side_effect=OSError("bus error"))
+                if loop_name == "icm":
+                    sensor_loop(1, 0x68, Mock(), Feed(), None, stop, open_imu=open_sensor)
+                else:
+                    MmcReader(1, 0x30, open_mmc=open_sensor).run(stop)
+                self.assertEqual(stop.waits, [I2C_RETRY_DELAY_S])
+                self.assertEqual(stop.waits, [0.5])

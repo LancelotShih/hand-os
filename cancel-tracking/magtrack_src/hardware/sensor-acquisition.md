@@ -23,6 +23,6 @@ be overwritten, including before logging. Both drivers share a bus through
 separate handles/threads; transaction serialization does not guarantee bandwidth
 or sample-time alignment. MMC operation is optional and off by default.
 
-Reconnect waits two seconds after `OSError`. ICM reopening notifies the pair;
+Reconnect waits `I2C_RETRY_DELAY_S` (0.5 seconds) after `OSError`. ICM reopening notifies the pair;
 MMC-only reopening does not reset the tracker/cached view. See
 [architecture.md](../../docs/architecture.md) for state retained after outages.

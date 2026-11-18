@@ -47,9 +47,11 @@ Rest the board for about a second so the tracker can estimate what the gyroscope
 reports when the board is not turning. This is its zero-rate estimate, called
 `bias` in the code.
 Saved calibration loads automatically. For new sensor corrections, follow
-[magnetometer calibration](#magnetometer-calibration). For coil tracking, follow
-[position setup](#position-setup): startup captures the field at the current pose,
-so the board must already be at its home mark with the coil on.
+[magnetometer calibration](#magnetometer-calibration). For tracking, switch the
+electromagnet off and measure the ambient field first. After that measurement,
+switch the electromagnet on manually and confirm in the page to start tracking.
+The application neither senses nor controls the physical coil power; its
+`coil_on` status records the user's confirmation.
 
 Each sensor panel has an **Apply magnetometer midpoint and scale corrections**
 switch. The initial settings
@@ -457,7 +459,8 @@ with arbitrary heading; magnetometer heading initialization is not implemented.
 
 | Operation | What actually changes |
 |---|---|
-| Startup | Loads saved sensor corrections/mounting and coil data; each tracker begins an automatic reference capture at its current pose |
+| Startup | Loads saved sensor corrections/mounting and coil data; waits for the user to measure the ambient field with the physical coil off |
+| Confirm coil state | The user switches the electromagnet manually and confirms its state in the page; `coil_on` is this software confirmation, not a sensor reading or hardware control |
 | Gyro rest detected | Replaces that tracker's in-memory bias; it is written to disk only with a completed tumble |
 | Calibrate magnetometers / Cancel calibration | Starts fresh collection / discards collection and any unfinished calculation; existing corrections keep running; start clears the previous displayed result |
 | Calculate and save corrections | Fits outside locks, discards superseded results, otherwise applies corrections, optionally applies MMC mounting, saves files, starts another reference capture |
@@ -634,7 +637,7 @@ above do not provide an application-wide transaction: correction/model
 compatibility, identifiers for saved setups and cross-object
 coordination still have the limitations recorded in the review and next steps.
 
-Drivers retry `OSError` after a two-second wait. On ICM reopening, both trackers
+Drivers retry `OSError` after `I2C_RETRY_DELAY_S` (0.5 seconds). On ICM reopening, both trackers
 keep their reference and previous orientation, clear their orientation histories
 and sample blocks, and request a minimum tilt correction from the next accel
 reading. Heading motion during the outage is unobservable. The last position estimate

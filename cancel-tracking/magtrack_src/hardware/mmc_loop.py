@@ -10,6 +10,7 @@ Used by: earth_cancel.py, tracking/pair.py (take).  Uses: hardware/mmc5983.py.
 import sys
 import threading
 
+from magtrack_src.config import I2C_RETRY_DELAY_S
 from magtrack_src.hardware.mmc5983 import MMC
 
 
@@ -40,8 +41,8 @@ class MmcReader:
                         self._fresh = reading
             except OSError as e:
                 self.connected, self.error = False, str(e)
-                print(f"MMC5983MA error ({e}); retrying in 2 s...", file=sys.stderr)
-                stop.wait(2.0)
+                print(f"MMC5983MA error ({e}); retrying in {I2C_RETRY_DELAY_S:g} s...", file=sys.stderr)
+                stop.wait(I2C_RETRY_DELAY_S)
             finally:
                 if mmc is not None:
                     mmc.close()

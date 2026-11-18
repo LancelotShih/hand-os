@@ -40,6 +40,12 @@ class StartingOrientation(unittest.TestCase):
         change = quat_mul(quat_conj(before), after)
         self.assertAlmostEqual(quat_angle_deg(change), 90, delta=5)
 
+        tracker.capture_reference_field(coil_off_confirmed=True)
+        board.still(0.5)
+        sample_quat = board.samples[-1]["quat"]
+        status_quat = tracker.status()["orientation_quat"]
+        self.assertLess(norm(sub(sample_quat, status_quat)), 1e-4)
+
     def test_independently_specified_quarter_turn(self):
         # Current board x points along saved y; current y points along saved -x.
         q = align_vectors((0, 0, 1), (-4, -17, -43), (0, 0, 1), (17, -4, -43))
@@ -77,6 +83,7 @@ class AbsoluteLookup(unittest.TestCase):
         first = loc.update(sample)
         self.assertIsNone(first["position"])
         self.assertGreaterEqual(len(first["candidates"]), 2)
+        self.assertIn("mirrored positions", first["why"])
         self.assertIsNone(loc._last)
         loc.choose_position(p, sample["reference_id"])
         result = loc.update(sample)

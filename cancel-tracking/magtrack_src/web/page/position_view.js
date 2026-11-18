@@ -1,10 +1,13 @@
 // Position, absolute coil field, matching choices and fitted poles in saved map axes.
 const POS_VIEW_START = {yaw: -35, pitch: 25, zoom: 1};
 const TRAIL_S = 4;
+const COIL_LENGTH_CM = 5, COIL_WIDTH_CM = 4, COIL_HEIGHT_CM = 2;
+const BOARD_HALF_SIZE_CM = 0.6, BOARD_HALF_THICKNESS_CM = 0.08;
+const POSITION_GRID_SPACING_CM = 5;
 const posCamera = {...POS_VIEW_START};
 const posTrail = [];
 let posLatest = null, posState = null, posDrag = null;
-let posOrientationQuat = null;
+let posOrientationQuat = null, positionGridVisible = false;
 
 (function controls() {
   const view = $("posview");
@@ -24,6 +27,8 @@ let posOrientationQuat = null;
   const reset = () => Object.assign(posCamera, POS_VIEW_START);
   view.addEventListener("dblclick", reset);
   $("posreset").onclick = reset;
+  const grid = $("posgridtoggle");
+  grid.onchange = () => { positionGridVisible = grid.checked; };
 
   const send = (path, body) => fetch(path, {method: "POST", headers: {"Content-Type": "application/json"},
                                             body: JSON.stringify(body || {})})
@@ -142,6 +147,8 @@ function drawPosition() {
   [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]]
     .forEach(([a, b]) => line(px(corners[a]), px(corners[b]), css("--line"), 1));
 
+  if (positionGridVisible) drawPositionGrid(g, px, r, line, label);
+
   if (coil) {
     drawField(g, px, coil, mid, range);
     drawCoil(g, px, coil);
@@ -184,6 +191,20 @@ function drawPosition() {
   }
 }
 
+function drawPositionGrid(g, px, range, line, label) {
+  const limit = Math.floor(range / POSITION_GRID_SPACING_CM) * POSITION_GRID_SPACING_CM;
+  g.globalAlpha = 0.8;
+  for (let v = -limit; v <= limit; v += POSITION_GRID_SPACING_CM) {
+    const color = v === 0 ? css("--dim") : css("--line");
+    const width = v === 0 ? 1.5 : 1;
+    line(px([v, -limit, 0]), px([v, limit, 0]), color, width);
+    line(px([-limit, v, 0]), px([limit, v, 0]), color, width);
+  }
+  g.globalAlpha = 1;
+  label(px([limit, 0, 0]), "x (cm)", css("--dim"));
+  label(px([0, limit, 0]), "y (cm)", css("--dim"));
+}
+
 function drawBox(g, px, center, axes, half, color) {
   const v = [];
   for (const a of [-1, 1]) for (const b of [-1, 1]) for (const c of [-1, 1]) {
@@ -202,17 +223,17 @@ function drawBox(g, px, center, axes, half, color) {
 }
 
 function drawCoil(g, px, coil) {
-  const a = coil.axis, h = coil.half_length;
+  const a = coil.axis;
   let side = [a[1], -a[0], 0];
   if (Math.hypot(...side) < 0.1) side = [1, 0, 0];
   side = side.map(v => v / Math.hypot(...side));
   const up = [a[1]*side[2]-a[2]*side[1], a[2]*side[0]-a[0]*side[2], a[0]*side[1]-a[1]*side[0]];
   const ends = [[1, "North", "#dc5454", -12], [-1, "South", "#4a88e4", 18]];
+  const halfLength = COIL_LENGTH_CM / 2;
   ends.forEach(([sign, name, color, labelOffset]) => {
-    const center = coil.center.map((c, k) => c + sign * a[k] * h / 2);
-    drawBox(g, px, center, [a, side, up], [h / 2, 2, 1], color);
-    const pole = sign > 0 ? coil.north_pole : coil.south_pole;
-    const tip = px(pole || coil.center.map((c, k) => c + sign * a[k] * h));
+    const center = a.map(v => sign * v * halfLength / 2);
+    drawBox(g, px, center, [a, side, up], [halfLength / 2, COIL_WIDTH_CM / 2, COIL_HEIGHT_CM / 2], color);
+    const tip = px(a.map(v => sign * v * halfLength));
     g.fillStyle = color; g.beginPath(); g.arc(tip[0], tip[1], 4, 0, 7); g.fill();
     g.font = "bold 14px system-ui"; g.fillText(name, tip[0] + 7, tip[1] + labelOffset);
   });
@@ -220,7 +241,7 @@ function drawCoil(g, px, coil) {
 
 function drawBoard(g, px, p, q) {
   const axes = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map(e => rot(q || [1, 0, 0, 0], e));
-  drawBox(g, px, p, axes, [1.6, 1.1, 0.15], css("--board"));
-  const nose = px([0, 1, 2].map(k => p[k] + axes[0][k] * 1.6 + axes[2][k] * 0.15));
+  drawBox(g, px, p, axes, [BOARD_HALF_SIZE_CM, BOARD_HALF_SIZE_CM, BOARD_HALF_THICKNESS_CM], css("--board"));
+  const nose = px([0, 1, 2].map(k => p[k] + axes[0][k] * BOARD_HALF_SIZE_CM + axes[2][k] * BOARD_HALF_THICKNESS_CM));
   g.fillStyle = css("--ink"); g.beginPath(); g.arc(nose[0], nose[1], 3, 0, 7); g.fill();
 }

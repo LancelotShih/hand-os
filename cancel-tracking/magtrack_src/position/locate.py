@@ -104,7 +104,10 @@ class Locator:
                 return invalid("No position matches the measured coil field within the allowed tolerance.")
             if previous is None and len(matches) > 1:
                 self._choices = [p for p, _ in matches]
-                result = invalid("Several positions match this field. Hold still and choose the matching starting position.")
+                result = invalid(
+                    "The coil field can match mirrored positions about the coil center. "
+                    "Hold still and choose the position where the sensor actually is."
+                )
                 result["candidates"] = [list(p) for p in self._choices]
                 return result
             p, miss = min(matches, key=lambda match: norm(sub(match[0], previous))) if previous else matches[0]

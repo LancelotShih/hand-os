@@ -15,6 +15,7 @@ CALIBRATION_DIR = DATA_DIR / "calibration"
 # hardware
 I2C_BUS = 1
 I2C_ADDRESS = 0x68
+I2C_RETRY_DELAY_S = 0.5    # wait after an I2C read/open error before reconnecting
 MMC_ON = False             # run the MMC5983MA beside the ICM?  Off: position uses only the ICM, and
                            # the ICM gets the whole I2C bus.  ./earth_cancel.py --mmc turns it on for one run
 MMC_I2C_ADDRESS = 0x30
