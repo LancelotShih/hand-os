@@ -15,7 +15,8 @@ calibration store.
 - **Settings:** `BLOCK_SAMPLES`, `MMC_BLOCK_SAMPLES`, `MAG_LATENCY_S`, `HISTORY_S`,
   `MAX_GAP_S`, `CAPTURE_*`, `RATE_WINDOW_S` in `config.py`.
 - **Output:** the view sample and status fields are listed in `docs/architecture.md`.
-- **Tests:** `tests/test_tracker.py`, `tests/test_tumble.py`, `tests/test_pair.py`.
+- **Tests:** `tests/test_tracker.py`, `tests/test_tumble.py`, `tests/test_pair.py`,
+  `tests/test_tracker_lifecycle.py` (controlled fit/save overlaps).
 - **State ownership:** `Tracker` owns orientation, bias, capture, correction and
   sample blocks. `Pair` runs separate orientation filters for the two sensors.
 
@@ -37,3 +38,9 @@ axes, so its allowance for modest motion is an approximation.
 Reference, reset/reconnect semantics, optional sample fields and concurrency
 limits are specified in [architecture.md](../../docs/architecture.md). See the
 [review](../../docs/architecture-review-2026-11-12.md) before changing ownership.
+
+Control methods take `_calibration_commit_lock` before `_lock` when both are
+needed. Numerical fitting holds neither; persistence holds only the control
+lock. `_calibration_revision` identifies the current attempt even if a later
+attempt collects identical readings. Never acquire the control lock while
+holding the state lock: acquisition uses only the state lock.

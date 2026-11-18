@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from magtrack_src.config import PASS_MIN_TURN_DEG
-from magtrack_src.recording.log_plot import read_samples
+from magtrack_src.recording.schema import read_samples
 
 STILL_DPS = 3.0           # turning slower than this counts as still ...
 STILL_MIN_S = 1.0         # ... once it has lasted this long
@@ -49,7 +49,9 @@ def still_stretches(rows):
 
 def noise_ut(stretches, names):
     """How much a NOISE_WINDOW_S average wobbles on a still board: the size of the
-    wobble across all three axes, in uT.  ``None`` with too few averages."""
+    wobble across all supplied axes, in uT. This is the square root of the sum
+    of the axes' pooled sample variances, not an average per-axis variation.
+    ``None`` with too few averages."""
     total, count = 0.0, 0
     for part in stretches:
         windows = {}
@@ -136,7 +138,7 @@ def report(r):
         row("Difference between measured and reference fields: median", "field", "µT", 0),
         row("Field difference: 95% at or below", "field", "µT", 1),
         row("Field difference: largest", "field", "µT", 2),
-        row(f"Field variation while still, {NOISE_WINDOW_S * 1000:.0f} ms averages", "noise", "µT", None, 3),
+        row(f"Combined x/y/z variation while still, {NOISE_WINDOW_S * 1000:.0f} ms averages", "noise", "µT", None, 3),
         row("Readings per second", "rate", "Hz", None, 0),
         "", verdict(r)])
 

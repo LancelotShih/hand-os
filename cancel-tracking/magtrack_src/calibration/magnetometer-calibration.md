@@ -75,9 +75,14 @@ even when false.
 
 `CalibrationFile` saves `offset = gains * raw_center`, for subtraction after
 gain application. The saved gyroscope zero-rate estimate (`bias`) is the value at calibration
-completion. Later automatic estimates are not written after every quiet interval. Sensor files are direct writes, with permissive
-loaders; they are not versioned or fully validated. Locator persistence is a
-separate implementation in `position/locate.py`.
+completion. Later automatic estimates are not written after every quiet interval.
+`store.py` validates complete correction records and mounting matrices before
+returning them. It exposes rejected-file reasons through `load_error` and
+`mounting_load_error`; the entry point puts these in sensor status at startup.
+Shared `validation.py` contains numeric/shape checks and `persistence.py` owns
+JSON serialization and complete-file replacement. File formats, compatibility,
+and limits are specified in the architecture's
+[persistence section](../../docs/architecture.md#persistence-streaming-and-reproducibility).
 
 The ambient field can include a uniform contribution other than Earth. Its
 strength must still fit the configured tumble range (20-100 uT by default).
@@ -89,5 +94,6 @@ identify the source of the field or verify uniformity across the working area.
 - **Used by:** `tracking/tracker.py` (runs the tumble and applies the results), and
   `earth_cancel.py` (loads saved files at startup).
 - **Settings:** `TUMBLE_*`, `PASS_UT`, file paths in `config.py`.
-- **Tests:** `tests/test_tumble.py`, plus `tests/test_pair.py` for mounting.
+- **Tests:** `tests/test_tumble.py`, `tests/test_pair.py` for mounting, and
+  `tests/test_saved_calibration.py` for validation and write failures.
 - **Saved files:** see [architecture.md](../../docs/architecture.md#persistence-streaming-and-reproducibility).

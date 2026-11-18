@@ -1,339 +1,27 @@
-"""Turns the coil's field into a position.  Knows nothing about I2C or the web.
+"""Live position tracking, measurement collection, workers, and saved coil data.
 
-Positions are in cm from the coil's center, which is 0, in the home axes: the
-ICM's own x, y, z while it sat at home.  *Home* is where the ICM sits on its tape
-mark, given by the user as a position from the coil, e.g. (15, 0, 0).
-
-The uniform ambient field includes Earth plus any steady background. With the
-coil on, the reference field is captured at home and also holds the
-coil's field there.  The ICM's error is then
-
-    error = B(p) - B(home)
-
-The coil is two iron cores wound as one bundle, about 5 cm long, and the board
-works within 15 cm of it. A finite bar magnet (two effective poles) is used instead
-of a point approximation. Physical accuracy of this model needs independent data.
-
-    B(p) = q (p - a) / |p - a|^3  -  q (p - b) / |p - b|^3
-    a, b = center +- half_length * axis
-
-``fit_coil`` finds axis, strength and half length from points captured at known
-positions.  The model's center starts at 0 but may move up to
-``LOCATE_CENTER_SLACK_CM``, to absorb a small mistake in measuring home and the
-model's own roughness.  How far it moved is a check on the home measurement.
-``solve`` then turns each error into a position, starting from the last one.  A
-bar magnet's field is the same at ``p`` and at its mirror through the center, so
-the track's continuity picks the side.
-
-Units: cm and uT.  ``s`` is strength times axis, in uT*cm^2.
-
-Used by: tracking/pair.py (Locator.update), web/server.py (point and home routes), earth_cancel.py.  Uses: geometry, config.
+Numerical field calculations live in coil_model, fitting in coil_fit, and the
+current position solve/checks in position_solver. This coordinator retains the
+existing sensor-home workflow; see docs/architecture.md for its limits.
 """
 
-import json
 import math
 import threading
 from pathlib import Path
 
-from magtrack_src.config import (LOCATE_CENTER_GRID_CM, LOCATE_CENTER_SLACK_CM, LOCATE_MAX_MISMATCH_UT,
-                                 LOCATE_MIN_POINTS, LOCATE_POINT_SAMPLES, LOCATE_POINT_MAX_SPREAD_UT,
-                                 LOCATE_RANGE_CM)
-from magtrack_src.geometry.vectors import add, dot, norm, sub
+from magtrack_src.config import (LOCATE_CENTER_SLACK_CM, LOCATE_MAX_MISMATCH_UT, LOCATE_MIN_POINTS,
+                                LOCATE_POINT_SAMPLES, LOCATE_POINT_MAX_SPREAD_UT,
+                                LOCATE_RANGE_CM)
+from magtrack_src.geometry.vectors import add, norm, sub
+from magtrack_src.persistence import read_json_object, temporary_json
+from magtrack_src.position.coil_model import Coil, mm_per_ut
+from magtrack_src.position.coil_fit import KEEP_CLEAR_CM, fit_coil
+from magtrack_src.position.position_solver import check_points, left_out_check, solve
+from magtrack_src.position.measurements import CoilCalibrationMeasurement
+from magtrack_src.validation import finite_number, vector3
 
-ORIGIN = (0.0, 0.0, 0.0)  # the coil's center, as measured by the user
-MIN_HALF_LENGTH_CM = 0.2
-MAX_HALF_LENGTH_CM = 6.0
-KEEP_CLEAR_CM = 3.0       # the coil's center can't be this close to a point or home: the coil is there
-
-
-def _scale(a, k):
-    return (a[0] * k, a[1] * k, a[2] * k)
-
-
-class Coil:
-    def __init__(self, center, s, half_length):
-        self.center = tuple(center)
-        self.s = tuple(s)
-        self.half_length = half_length
-
-    @classmethod
-    def from_params(cls, x, slack=None):
-        """``slack``: keep the center within this many cm of 0."""
-        center = tuple(x[0:3])
-        r = norm(center)
-        if slack is not None and r > slack:
-            center = _scale(center, slack / r)
-        return cls(center, x[3:6], min(MAX_HALF_LENGTH_CM, max(MIN_HALF_LENGTH_CM, x[6])))
-
-    def params(self):
-        return [*self.center, *self.s, self.half_length]
-
-    @property
-    def strength(self):
-        return norm(self.s)
-
-    @property
-    def axis(self):
-        q = self.strength
-        return (1.0, 0.0, 0.0) if q == 0.0 else _scale(self.s, 1.0 / q)
-
-    def field(self, p):
-        q = self.strength
-        if q == 0.0:
-            return (0.0, 0.0, 0.0)
-        tip = _scale(self.s, self.half_length / q)
-        out = (0.0, 0.0, 0.0)
-        for pole, sign in ((add(self.center, tip), q), (sub(self.center, tip), -q)):
-            d = sub(p, pole)
-            r = norm(d)
-            if r < 1e-6:
-                return (math.inf, math.inf, math.inf)
-            out = add(out, _scale(d, sign / r ** 3))
-        return out
-
-    def mirror(self, p):
-        """The other position with the same field."""
-        return sub(_scale(self.center, 2.0), p)
-
-    def as_dict(self):
-        return {"center": list(self.center), "s": list(self.s), "half_length": self.half_length}
-
-    @classmethod
-    def from_dict(cls, d):
-        return cls([float(v) for v in d["center"]], [float(v) for v in d["s"]],
-                   float(d["half_length"]))
-
-
-# -- least squares ------------------------------------------------------------
-
-def _solve_linear(a, b):
-    """``a x = b`` by Gaussian elimination; ``None`` if ``a`` is singular."""
-    n = len(b)
-    m = [list(row) + [b[i]] for i, row in enumerate(a)]
-    for col in range(n):
-        piv = max(range(col, n), key=lambda r: abs(m[r][col]))
-        if abs(m[piv][col]) < 1e-12:
-            return None
-        m[col], m[piv] = m[piv], m[col]
-        for r in range(col + 1, n):
-            k = m[r][col] / m[col][col]
-            if k:
-                for c in range(col, n + 1):
-                    m[r][c] -= k * m[col][c]
-    x = [0.0] * n
-    for r in range(n - 1, -1, -1):
-        x[r] = (m[r][n] - sum(m[r][c] * x[c] for c in range(r + 1, n))) / m[r][r]
-    return x
-
-
-def _cost(r):
-    return sum(v * v for v in r)
-
-
-def least_squares(residuals, x0, iterations=100, steps=None):
-    """Levenberg-Marquardt with a numeric Jacobian.  Returns ``(x, cost)``."""
-    x = list(x0)
-    r = residuals(x)
-    cost = _cost(r)
-    lam = 1e-3
-    steps = steps or [1e-4 * max(1.0, abs(v)) for v in x]
-    for _ in range(iterations):
-        if not math.isfinite(cost):
-            break
-        cols = []
-        for j, h in enumerate(steps):
-            xj = list(x)
-            xj[j] += h
-            cols.append([(a - b) / h for a, b in zip(residuals(xj), r)])
-        n = len(x)
-        jtj = [[sum(a * b for a, b in zip(cols[i], cols[k])) for k in range(n)] for i in range(n)]
-        jtr = [sum(a * b for a, b in zip(cols[i], r)) for i in range(n)]
-        while True:
-            a = [[jtj[i][k] + (lam * (jtj[i][i] + 1e-9) if i == k else 0.0) for k in range(n)]
-                 for i in range(n)]
-            dx = _solve_linear(a, [-v for v in jtr])
-            if dx is not None:
-                xn = [v + d for v, d in zip(x, dx)]
-                rn = residuals(xn)
-                cn = _cost(rn)
-                if cn < cost:
-                    break
-            lam *= 4.0
-            if lam > 1e10:
-                return x, cost
-        done = cost - cn < 1e-12 * (1.0 + cost)
-        x, r, cost = xn, rn, cn
-        lam = max(lam / 3.0, 1e-12)
-        if done:
-            break
-    return x, cost
-
-
-# -- fitting the coil -----------------------------------------------------------
-
-def _dipole_matrix(d):
-    """``B = M m`` for a point magnet of moment ``m`` seen from ``d``."""
-    r2 = dot(d, d)
-    r5 = r2 * r2 * math.sqrt(r2)
-    r3 = r2 * math.sqrt(r2)
-    return [[3.0 * d[i] * d[k] / r5 - (1.0 / r3 if i == k else 0.0) for k in range(3)]
-            for i in range(3)]
-
-
-def _coarse_search(points, home, slack_cm, grid_cm):
-    """Best few coil centers on a grid within ``slack_cm`` of 0, treating the coil
-    as a point: for a given center the field is linear in the magnet's moment, so
-    each guess is quick."""
-    clear = [home] + [p for p, _ in points]
-    n = int(slack_cm // grid_cm)
-    scored = []
-    for i in range(-n, n + 1):
-        for j in range(-n, n + 1):
-            for k in range(-n, n + 1):
-                c = (i * grid_cm, j * grid_cm, k * grid_cm)
-                if norm(c) > slack_cm + 1e-9 or any(norm(sub(c, p)) < KEEP_CLEAR_CM for p in clear):
-                    continue
-                at_home = _dipole_matrix(sub(home, c))
-                rows, rhs = [], []
-                for p, e in points:
-                    m = _dipole_matrix(sub(p, c))
-                    rows += [[m[a][b] - at_home[a][b] for b in range(3)] for a in range(3)]
-                    rhs += list(e)
-                ata = [[sum(row[a] * row[b] for row in rows) for b in range(3)] for a in range(3)]
-                atb = [sum(row[a] * v for row, v in zip(rows, rhs)) for a in range(3)]
-                moment = _solve_linear(ata, atb)
-                if moment is None:
-                    continue
-                miss = sum((sum(row[b] * moment[b] for b in range(3)) - v) ** 2
-                           for row, v in zip(rows, rhs))
-                scored.append((miss, c, moment))
-    scored.sort(key=lambda t: t[0])
-    picked = []
-    for miss, c, moment in scored:      # keep guesses apart, so they explore
-        if all(norm(sub(c, other)) > 1.5 * grid_cm for _, other, _ in picked):
-            picked.append((miss, c, moment))
-        if len(picked) == 5:
-            break
-    return picked
-
-
-def _residuals(points, home, slack_cm):
-    def f(x):
-        coil = Coil.from_params(x, slack_cm)
-        at_home = coil.field(home)
-        out = []
-        for p, e in points:
-            out.extend(sub(sub(coil.field(p), at_home), e))
-        return out
-    return f
-
-
-def _refine(points, home, x0, slack_cm=LOCATE_CENTER_SLACK_CM, iterations=200):
-    x, cost = least_squares(_residuals(points, home, slack_cm), x0, iterations,
-                            steps=[1e-3] * 3 + [1e-3 * max(1.0, max(abs(v) for v in x0[3:6]))] * 3 + [1e-3])
-    return Coil.from_params(x, slack_cm), cost
-
-
-def fit_coil(points, home, slack_cm=LOCATE_CENTER_SLACK_CM, grid_cm=LOCATE_CENTER_GRID_CM):
-    """The coil that best explains ``points``: ``[(position, error), ...]``,
-    positions in cm from the coil's center, errors in uT, both in the home axes.
-    ``home`` is where the reference field was captured, in cm from the coil's center."""
-    if len(points) < LOCATE_MIN_POINTS:
-        raise ValueError(f"A coil model needs at least {LOCATE_MIN_POINTS} position-and-field measurements; {len(points)} are available.")
-    best = None
-    for _, c, moment in _coarse_search(points, home, slack_cm, grid_cm):
-        half = 2.0
-        coil, cost = _refine(points, home, [*c, *(v / (2.0 * half) for v in moment), half], slack_cm)
-        if best is None or cost < best[1]:
-            best = (coil, cost)
-    if best is None:
-        raise ValueError("Could not calculate a coil model. Spread the measured positions through the working area and keep the sensor at least 3 cm from the coil.")
-    return best[0]
-
-
-# -- solving for position ------------------------------------------------------
-
-def _seeds(coil, target):
-    """Places to try when the last position doesn't lead anywhere: around the coil
-    at the distance a point magnet of its strength would give this field."""
-    moment = coil.strength * 2.0 * coil.half_length
-    r = (moment / max(norm(target), 1e-3)) ** (1.0 / 3.0)
-    dirs = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
-    dirs += [(x, y, z) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]
-    return [add(coil.center, _scale(d, r / norm(d))) for d in dirs]
-
-
-def _settle(coil, target, start):
-    x, cost = least_squares(lambda p: list(sub(coil.field(p), target)), start, 30,
-                            steps=[1e-4] * 3)
-    return tuple(x), math.sqrt(cost)
-
-
-def solve(coil, error, start, home_field):
-    """``(position, mismatch_ut)`` for one error vector, searching from ``start``.
-    ``home_field`` is the coil's field at home.  ``mismatch_ut`` is how far the
-    coil's field at the answer is from what was measured. The nearer mirror is
-    chosen from start; this is a movement-history assumption, not a unique fix.
-    Local sensitivity does not detect the separate mirrored solution."""
-    target = add(error, home_field)
-    p, miss = _settle(coil, target, start)
-    if miss > LOCATE_MAX_MISMATCH_UT or norm(sub(p, coil.center)) > 3 * LOCATE_RANGE_CM:
-        tries = [_settle(coil, target, s) for s in _seeds(coil, target)]
-        p, miss = min(tries, key=lambda t: t[1])
-    other = coil.mirror(p)            # same field: keep the side nearer where we were
-    if norm(sub(other, start)) < norm(sub(p, start)):
-        p = other
-    return p, miss
-
-
-def mm_per_ut(coil, p):
-    """How far off a position can be, in mm, for each uT of field error, in the
-    worst direction. In the plane through the coil's middle, the model's vector
-    field is the same around each circle centered on its axis. Sensitivity grows
-    without limit there; this does not detect the distant mirror solution."""
-    j = []
-    for k in range(3):
-        d = [0.0, 0.0, 0.0]
-        d[k] = 1e-3
-        j.append(_scale(sub(coil.field(add(p, d)), coil.field(sub(p, d))), 1.0 / 2e-3))
-    a = [[sum(j[k][r] * j[k][c] for k in range(3)) for c in range(3)] for r in range(3)]
-    # smallest eigenvalue of the symmetric 3x3 a, in closed form
-    off = a[0][1] ** 2 + a[0][2] ** 2 + a[1][2] ** 2
-    mean = (a[0][0] + a[1][1] + a[2][2]) / 3.0
-    spread = math.sqrt((sum((a[i][i] - mean) ** 2 for i in range(3)) + 2.0 * off) / 6.0)
-    if spread == 0.0:
-        smallest = mean
-    else:
-        b = [[(a[r][c] - (mean if r == c else 0.0)) / spread for c in range(3)] for r in range(3)]
-        det = (b[0][0] * (b[1][1] * b[2][2] - b[1][2] * b[2][1])
-               - b[0][1] * (b[1][0] * b[2][2] - b[1][2] * b[2][0])
-               + b[0][2] * (b[1][0] * b[2][1] - b[1][1] * b[2][0]))
-        phi = math.acos(max(-1.0, min(1.0, det / 2.0))) / 3.0
-        smallest = mean + 2.0 * spread * math.cos(phi + 2.0 * math.pi / 3.0)
-    return 10.0 / math.sqrt(max(smallest, 1e-12))
-
-
-def check_points(coil, points, home):
-    """How far each point solves from where it was said to be, in mm."""
-    at_home = coil.field(home)
-    return [round(10.0 * norm(sub(solve(coil, e, p, at_home)[0], p)), 1) for p, e in points]
-
-
-def left_out_check(coil, points, home):
-    """Local leave-one-out consistency: refine from the all-points model without
-    each point, then solve starting at its known position. This is not an
-    independent global accuracy test. None when too few points remain."""
-    if len(points) <= LOCATE_MIN_POINTS:
-        return [None] * len(points)
-    out = []
-    for i, (p, e) in enumerate(points):
-        rest = points[:i] + points[i + 1:]
-        refit, _ = _refine(rest, home, coil.params(), iterations=60)
-        out.append(round(10.0 * norm(sub(solve(refit, e, p, refit.field(home))[0], p)), 1))
-    return out
-
-
-# -- live tracking ------------------------------------------------------------
+# Keep the former numerical import available for callers of the old module.
+from magtrack_src.position.coil_fit import least_squares as least_squares
 
 def _vector(position, what):
     p = tuple(float(v) for v in position)
@@ -350,10 +38,12 @@ class Locator:
 
     def __init__(self, path=None):
         self._lock = threading.Lock()
-        self._save_lock = threading.Lock()   # one save at a time, so the newest state lands last
+        self._save_lock = threading.Lock()   # serialize snapshot, temporary write and replacement
+        self._revision = 0                  # calibration changes and applied model results
+        self._reference_generation = 0      # reference changes observed in incoming samples
         self._path = Path(path) if path else None
         self.home = None              # where the ICM sits at home, cm from the coil's center
-        self.points = []              # [(position, error, spread_ut)], cm from the coil's center
+        self.points = []              # CoilCalibrationMeasurement entries
         self.coil = None
         self.checks = []              # per point: (mm off, mm off when left out)
         self.message = None
@@ -371,6 +61,13 @@ class Locator:
         """Adds ``locate`` to an ICM view sample: position in cm from the coil's
         center, or ``None`` with a reason."""
         error = sample.get("error")
+        if error is not None:
+            try:
+                error = tuple(float(value) for value in error)
+                if len(error) != 3 or not all(math.isfinite(value) for value in error):
+                    raise ValueError
+            except (TypeError, ValueError, OverflowError):
+                return {"position": None, "why": "Magnetic reading is invalid. Three finite field components are required."}
         with self._lock:
             if error is None:
                 return {"position": None, "why": "No corrected reference field is available. Check sensor calibration and measure the reference field at sensor home."}
@@ -378,23 +75,40 @@ class Locator:
                 return {"position": None, "why": "Sensor-home coordinates are not saved. Enter and save them before tracking position."}
             # "predicted" is the legacy sample key for the captured reference_field.
             if sample.get("predicted") != self._reference_field:      # captured again: back at home
-                self._reference_field = sample.get("predicted")
+                reference = sample.get("predicted")
+                self._reference_field = list(reference) if reference is not None else None
+                self._reference_generation += 1
                 self._last = self.home
             if self._capture is not None:
                 self._capture_step(error)
             coil, start, home, home_field = self.coil, self._last or self.home, self.home, self._home_field
+            revision, reference_generation = self._revision, self._reference_generation
         if coil is None:
             return {"position": None, "why": "No coil model is available. Record fields at measured positions to calibrate the coil model."}
         p, miss = solve(coil, error, start, home_field)
-        if miss > LOCATE_MAX_MISMATCH_UT:
-            return {"position": None, "why": f"No position matches the measured field within the allowed tolerance. The best field match found differs by {miss:.1f} µT."}
         with self._lock:
+            if revision != self._revision or reference_generation != self._reference_generation:
+                return {"position": None, "why": "Calibration or reference changed during the position calculation. Waiting for a new reading."}
+            if len(p) != 3 or not all(math.isfinite(value) for value in p) or not math.isfinite(miss):
+                return {"position": None, "why": "The position calculation produced invalid numbers. Waiting for a valid reading."}
+            if miss > LOCATE_MAX_MISMATCH_UT:
+                return {"position": None, "why": f"No position matches the measured field within the allowed tolerance. The best field match found differs by {miss:.1f} µT."}
+        from_coil_cm, from_home_cm = norm(p), norm(sub(p, home))
+        if not math.isfinite(from_coil_cm) or not math.isfinite(from_home_cm):
+            return {"position": None, "why": "The position calculation produced invalid distances. Waiting for a valid reading."}
+        sensitivity = mm_per_ut(coil, p)
+        if not math.isfinite(sensitivity):
+            return {"position": None, "why": "The position calculation produced invalid sensitivity. Waiting for a valid reading."}
+        result = {"position": [round(v, 2) for v in p],
+                  "from_coil_cm": round(from_coil_cm, 1),
+                  "from_home_cm": round(from_home_cm, 1),
+                  "mismatch_ut": round(miss, 2),
+                  "mm_per_ut": round(min(sensitivity, 999.0), 1)}
+        with self._lock:
+            if revision != self._revision or reference_generation != self._reference_generation:
+                return {"position": None, "why": "Calibration or reference changed during the position calculation. Waiting for a new reading."}
             self._last = p
-        return {"position": [round(v, 2) for v in p],
-                "from_coil_cm": round(norm(p), 1),
-                "from_home_cm": round(norm(sub(p, home)), 1),
-                "mismatch_ut": round(miss, 2),
-                "mm_per_ut": round(min(mm_per_ut(coil, p), 999.0), 1)}
+            return result
 
     def _capture_step(self, error):
         p, errors = self._capture
@@ -409,7 +123,7 @@ class Locator:
             self.message = (f"Measurement not saved: the magnetic field varied by {spread:.1f} µT during recording. "
                             "Hold the board still and try again.")
             return
-        self.points.append((p, mean, round(spread, 2)))
+        self.points.append(CoilCalibrationMeasurement(p, mean, round(spread, 2)))
         self.message = None
         self._start_fit()
 
@@ -425,7 +139,7 @@ class Locator:
             if self._capture is not None:
                 raise ValueError("Wait for the current field recording to finish, or cancel it.")
             if self._from_home:
-                self.points = [(add(p, h), e, s) for p, e, s in self.points]
+                self.points = [CoilCalibrationMeasurement(add(p, h), e, s) for p, e, s in self.points]
                 self._from_home, self._old_coil = False, None
             self.home = h
             self._last = h
@@ -455,6 +169,10 @@ class Locator:
 
     def clear_points(self):
         with self._lock:
+            self._revision += 1
+            self._capture = None
+            self.fitting = False
+            self._last = None
             self.points = []
             self.coil = None
             self._home_field = None
@@ -465,15 +183,16 @@ class Locator:
 
     def _start_fit(self):
         """Called with the lock held."""
-        points = [(p, e) for p, e, _ in self.points]
+        self._revision += 1
+        points = [(point.position_cm, point.field_difference_ut) for point in self.points]
         if len(points) < LOCATE_MIN_POINTS or self.home is None:
             self.coil, self._home_field, self.checks, self.fitting = None, None, [], False
             self._save_later()
             return
         self.fitting = True
-        threading.Thread(target=self._fit, args=(points, self.home), daemon=True).start()
+        threading.Thread(target=self._fit, args=(points, self.home, self._revision), daemon=True).start()
 
-    def _fit(self, points, home):
+    def _fit(self, points, home, revision):
         try:
             coil = fit_coil(points, home)
             checks = list(zip(check_points(coil, points, home), left_out_check(coil, points, home)))
@@ -481,8 +200,9 @@ class Locator:
         except ValueError as e:
             coil, checks, message = None, [], f"Could not calculate the coil model: {e}"
         with self._lock:
-            if [(p, e) for p, e, _ in self.points] != points or self.home != home:   # changed while fitting
+            if revision != self._revision:
                 return
+            self._revision += 1
             self.coil, self.checks, self.message, self.fitting = coil, checks, message, False
             self._home_field = coil.field(home) if coil else None
             self._last = home
@@ -495,43 +215,85 @@ class Locator:
         if self._path is None:
             return
         with self._save_lock:
-            self._write()
+            while not self._write():
+                pass  # state changed during I/O: take a fresh snapshot under this save lock
 
     def _write(self):
+        """Try to save one revision. False requests a retry with current state."""
         with self._lock:
-            data = {"points": [{"position": list(p), "error": list(e), "spread_ut": s}
-                               for p, e, s in self.points]}
+            revision = self._revision
+            data = {"points": [{"position": list(point.position_cm),
+                                "error": list(point.field_difference_ut),
+                                "spread_ut": point.max_field_deviation_ut}
+                               for point in self.points]}
             if self._from_home:       # still waiting for home: keep the old file's form
                 data["coil"] = self._old_coil.as_dict() if self._old_coil else None
             else:
                 data.update(home=list(self.home) if self.home else None,
                             coil=self.coil.as_dict() if self.coil else None, checks=self.checks)
-        try:                          # written whole then swapped in, so a reader never sees half
-            tmp = self._path.with_name(f"{self._path.name}.{threading.get_ident()}.tmp")
-            tmp.write_text(json.dumps(data, indent=2))
-            tmp.replace(self._path)
-        except OSError as e:
+        try:
+            with temporary_json(self._path, data) as tmp:
+                with self._lock:
+                    if revision == self._revision:
+                        tmp.replace(self._path)
+                        return True
+            return False
+        except (OSError, ValueError) as e:
             with self._lock:
-                self.message = f"Couldn't save the coil calibration: {e}"
+                if revision == self._revision:
+                    self.message = f"Couldn't save the coil calibration: {e}"
+                    return True
+            return False
 
     def _load(self):
         if self._path is None:
             return
         try:
-            d = json.loads(self._path.read_text())
-            self.points = [(tuple(float(v) for v in q["position"]), tuple(float(v) for v in q["error"]),
-                            float(q.get("spread_ut", 0.0))) for q in d["points"]]
-            coil = Coil.from_dict(d["coil"]) if d.get("coil") else None
+            d = read_json_object(self._path)
+            if not isinstance(d["points"], list):
+                raise ValueError("coil measurements must be a list")
+            points = []
+            for q in d["points"]:
+                if not isinstance(q, dict):
+                    raise ValueError("each coil measurement must be an object")
+                spread = finite_number(q.get("spread_ut", 0.0), "field variation")
+                if spread < 0.0:
+                    raise ValueError("field variation cannot be negative")
+                points.append(CoilCalibrationMeasurement(vector3(q["position"], "measurement position"),
+                                                         vector3(q["error"], "field difference"), spread))
+            coil = Coil.from_dict(d["coil"]) if d.get("coil") is not None else None
+            raw_checks = d.get("checks", [])
+            if not isinstance(raw_checks, list):
+                raise ValueError("coil checks must be a list")
+            checks = []
+            for pair in raw_checks:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    raise ValueError("each coil check must contain two distances")
+                distances = tuple(None if v is None else finite_number(v, "check distance") for v in pair)
+                if any(v is not None and v < 0.0 for v in distances):
+                    raise ValueError("check distances cannot be negative")
+                checks.append(distances)
+            if checks and len(checks) != len(points):
+                raise ValueError("coil checks must correspond to the saved measurements")
             if "home" not in d:       # an old file: positions measured from home, coil and all
-                self._from_home = bool(self.points)
+                self.points = points
+                self._from_home = bool(points)
                 self._old_coil = coil if self._from_home else None
                 return
-            self.home = tuple(float(v) for v in d["home"]) if d["home"] else None
-            self.coil = coil
-            self.checks = [tuple(c) for c in d.get("checks", [])]
-            self._home_field = self.coil.field(self.home) if self.coil and self.home else None
-        except (OSError, ValueError, KeyError, TypeError):
-            self.home, self.points, self.coil, self.checks = None, [], None, []
+            home = vector3(d["home"], "sensor home") if d["home"] is not None else None
+            if home is not None and norm(home) < KEEP_CLEAR_CM:
+                raise ValueError(f"sensor home must be at least {KEEP_CLEAR_CM:g} cm from the coil center")
+            home_field = coil.field(home) if coil is not None and home is not None else None
+            if home_field is not None:
+                vector3(home_field, "model field at sensor home")
+                finite_number(mm_per_ut(coil, home), "model sensitivity at sensor home")
+            # Install only after the entire file has passed validation.
+            self.home, self.points, self.coil, self.checks = home, points, coil, checks
+            self._home_field = home_field
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError, OverflowError) as error:
+            self.message = f"Saved coil calibration was not loaded ({self._path.name}): {error}"
 
     def status(self):
         with self._lock:
@@ -542,8 +304,9 @@ class Locator:
                 "points_from_home": self._from_home,
                 "suggested_home": ([round(-v, 1) for v in self._old_coil.center]
                                    if self._old_coil else None),     # the old fit's coil, seen from home
-                "points": [{"position": [round(v, 2) for v in p], "spread_ut": s, "off_mm": k[0],
-                            "left_out_mm": k[1]} for (p, _, s), k in zip(self.points, checks)],
+                "points": [{"position": [round(v, 2) for v in point.position_cm],
+                            "spread_ut": point.max_field_deviation_ut, "off_mm": k[0],
+                            "left_out_mm": k[1]} for point, k in zip(self.points, checks)],
                 "min_points": LOCATE_MIN_POINTS,
                 "capturing": self._capture is not None,
                 "capture_done": len(self._capture[1]) / LOCATE_POINT_SAMPLES if self._capture else 0.0,

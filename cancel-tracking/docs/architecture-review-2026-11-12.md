@@ -11,6 +11,20 @@ is historical: its paths and some lifecycle recommendations predate current code
 
 ## Evidence and scope
 
+The findings below describe the reviewed baseline. As of the November 17
+reliability work, R3's locator clear/capture/fit issue is fixed. The locator
+parts of R4 now use revision guards for fits, live solves and file replacement.
+Tracker tumble results also have revision guards, and applying/saving a result
+is ordered with Reset and other sensor-calibration controls. Cross-object
+transactions remain pending. R5 has live position-input/result checks and
+validation of saved sensor/mounting/coil records; upstream readings and numerical
+fitting results still need broader validation. Sensor files now use complete-file
+replacement, but the set of files is not one atomic transaction.
+R12's Windows stream-abort traceback is handled, including header writes.
+See [current architecture](architecture.md#threads-locks-and-failure-handling)
+and [implementation progress](next-steps.md#implementation-progress-november-17)
+for current behavior and remaining work.
+
 Reviewed all production Python modules, the browser scripts, package guides,
 entry point, configuration, and test coverage. No physical sensor was opened,
 no hardware settings were changed. The initial baseline retained documentation,

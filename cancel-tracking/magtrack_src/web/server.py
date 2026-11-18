@@ -109,7 +109,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             fn()
             body = {"ok": True}
-        except ValueError as e:
+        except (ValueError, OSError) as e:
             body = {"ok": False, "error": str(e)}
         self._send(json.dumps(body).encode(), "application/json")
 
@@ -121,12 +121,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _stream(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
-        last = 0
         try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            last = 0
             while True:
                 for s in self.server.feed.since(last):
                     last = s["seq"]
@@ -134,7 +134,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(f"event: status\ndata: {json.dumps(self._state())}\n\n".encode())
                 self.wfile.flush()
                 time.sleep(0.05)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
 
 

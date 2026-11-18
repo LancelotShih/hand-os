@@ -53,6 +53,7 @@ def main(argv=None):
     locator = Locator(config.COIL_FILE)
     tracker = Pair(Tracker(offset, bias, store, gains, use_calibration=config.ICM_USE_CALIBRATION),
                    locator=locator)
+    tracker.icm.message = store.load_error
     if args.mmc:
         mmc_store = CalibrationFile(config.MMC_CALIBRATION_FILE, config.MMC_TUMBLE_LOG_FILE,
                                     config.MMC_MOUNTING_FILE)
@@ -62,6 +63,8 @@ def main(argv=None):
                                fit_mounting=True, block_samples=config.MMC_BLOCK_SAMPLES,
                                use_calibration=config.MMC_USE_CALIBRATION),
                        MmcReader(args.bus, args.mmc_address), locator)
+        tracker.mmc.message = " ".join(message for message in
+                                      (mmc_store.load_error, mmc_store.mounting_load_error) if message) or None
     feed = Feed()
     log = DataLog(config.LOG_DIR)
     stop = threading.Event()

@@ -9,7 +9,6 @@ To redraw a log:  python3 -m magtrack_src.recording.log_plot data/logs/<name>
 Used by: recording/data_log.py, recording/compare.py.  Uses: config.
 """
 
-import csv
 import html
 import json
 import sys
@@ -17,16 +16,8 @@ from pathlib import Path
 
 from magtrack_src.config import PASS_MIN_TURN_DEG, PASS_UT
 
-SAMPLE_COLUMNS = ["t_s", "qw", "qx", "qy", "qz", "yaw_deg", "pitch_deg", "roll_deg", "turn_deg",
-                  "measured_x_ut", "measured_y_ut", "measured_z_ut",
-                  "predicted_x_ut", "predicted_y_ut", "predicted_z_ut",
-                  "error_x_ut", "error_y_ut", "error_z_ut", "error_ut",
-                  "error_deg",
-                  "mmc_measured_x_ut", "mmc_measured_y_ut", "mmc_measured_z_ut",
-                  "mmc_predicted_x_ut", "mmc_predicted_y_ut", "mmc_predicted_z_ut",
-                  "mmc_error_x_ut", "mmc_error_y_ut", "mmc_error_z_ut",
-                  "mmc_error_ut", "mmc_error_deg", "calibration_on", "mmc_calibration_on",
-                  "pos_x_cm", "pos_y_cm", "pos_z_cm"]
+# Compatibility exports: existing callers may still import these here.
+from magtrack_src.recording.schema import SAMPLE_COLUMNS, read_samples
 
 MAX_BUCKETS = 1500        # thinning: at most two points per bucket
 MAX_GAP_S = 1.0           # a longer gap in the data breaks the line
@@ -35,17 +26,6 @@ POSITION_TOPS = (5, 10, 15, 20, 30, 50)   # cm
 
 WIDTH, LEFT, RIGHT = 900, 52, 14
 PLOT_H, HEADER_H, AXIS_H = 96, 26, 24
-
-
-def read_samples(folder):
-    """Each column of samples.csv as a list, ``None`` where it's blank."""
-    columns = {name: [] for name in SAMPLE_COLUMNS}
-    with open(Path(folder) / "samples.csv", newline="") as f:
-        for row in csv.DictReader(f):
-            for name in SAMPLE_COLUMNS:
-                value = row.get(name) or row.get(name.replace("error", "residual"))  # older logs
-                columns[name].append(float(value) if value else None)
-    return columns
 
 
 def thin(ts, vs, buckets=MAX_BUCKETS):

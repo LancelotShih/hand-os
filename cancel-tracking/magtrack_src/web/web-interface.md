@@ -23,7 +23,15 @@ implemented; the default bind address exposes controls on the bench network.
 Browser scripts share globals and depend on HTML load order. The field renderer
 reimplements the backend coil equation from rounded status values; its arrows
 are an illustration rather than a separate accuracy check. Position POSTs
-display rejected-request messages; the general controls currently ignore them.
+display rejected-request messages. Recording requests also display rejected
+operations and network failures, and re-enable the button afterward. Other
+general controls still do not display their rejected-request messages.
+The general HTTP control handler converts `ValueError` and `OSError` into its
+existing `{ok: false, error: ...}` JSON response.
+
+Stream disconnect handling covers broken pipes, connection resets and Windows
+connection aborts during headers and body writes. Other stream errors still
+propagate rather than being silently suppressed.
 
 The Position card colors the estimated movement per unit of field change but has no dedicated history or
 blind-spot warning. Reconnection is reported in sensor status text; there is no

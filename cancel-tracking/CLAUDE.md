@@ -30,6 +30,7 @@ a package. Each file's docstring says what it does.
 | `earth_cancel.py` | Entry point: builds every object, starts the threads, serves the page |
 | `user-guide.md` | Link to the maintained architecture document; contains no separate instructions |
 | `magtrack_src/config.py` | Operational settings and file paths; algorithm/display constants also exist in modules |
+| `magtrack_src/validation.py`, `persistence.py` | Shared saved-data checks and complete-file JSON replacement; live owners still control ordering |
 | `magtrack_src/hardware/` | The only code that touches I2C: the ICM-20948 and MMC5983MA drivers, plus their read loops |
 | `magtrack_src/geometry/` | Vector and quaternion math on plain tuples |
 | `magtrack_src/orientation/` | Madgwick filter (gyro + accel only), gyro bias measured during rests |
@@ -66,7 +67,8 @@ only place that wires layers together. Imports are absolute: `from magtrack_src.
 Runtime calls are broader than imports: the hardware loop invokes its injected
 tracker/log/feed, and `Pair` invokes its reader and locator. `Tracker` performs
 file I/O through an injected store during controls. `Locator` combines numerical
-logic, live state, workers and persistence. Do not describe tracking as entirely
+calls, live state, workers and persistence; its numerical functions live in
+`position/coil_model.py`, `coil_fit.py` and `position_solver.py`. Do not describe tracking as entirely
 free of I/O or the sensor loop as nonblocking.
 
 ## Facts that are easy to get wrong
@@ -134,8 +136,8 @@ current behavior in architecture/package docs and future requirements in next st
   `web/server.py`, and link it from `index.html`. `tests/test_server.py` checks all three,
   and that every element id the scripts use exists.
 - **A field in the live sample:** produce it in `tracking/` or `position/`. If it
-  should be logged, add a column in `recording/log_plot.py` `SAMPLE_COLUMNS` and
-  `recording/data_log.py` `_sample_row`.
+  should be logged, add a column in `recording/schema.py` `SAMPLE_COLUMNS` and
+  the matching value in its `sample_row` function.
 
 ## Conventions
 

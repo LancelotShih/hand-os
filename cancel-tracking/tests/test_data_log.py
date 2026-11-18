@@ -5,11 +5,14 @@ import re
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from contextlib import ExitStack
 from pathlib import Path
+from unittest.mock import patch
 
 from magtrack_src.config import PASS_UT
-from magtrack_src.recording.data_log import RAW_COLUMNS, DataLog
-from magtrack_src.recording.log_plot import SAMPLE_COLUMNS, nice_top, read_samples, render, summarize, thin, write_plot
+from magtrack_src.recording.data_log import DataLog
+from magtrack_src.recording.schema import RAW_COLUMNS, SAMPLE_COLUMNS, read_samples
+from magtrack_src.recording.log_plot import nice_top, render, summarize, thin, write_plot
 from tests.sim.sim_board import GYRO_BIAS, OFFSET, SimBoard
 from magtrack_src.tracking.tracker import Tracker
 
@@ -115,6 +118,88 @@ class Logging(unittest.TestCase):
         status = self.log.status()
         self.assertFalse(status["active"])
         self.assertIn("Recording stopped because a file could not be written", status["error"])
+
+    def test_failed_start_closes_resources_and_allows_retry(self):
+        real_open = open
+        for failure in ("folder", "metadata", "raw_open", "samples_open",
+                        "header", "raw_flush", "samples_flush"):
+            with self.subTest(failure=failure):
+                log = DataLog(self.root / failure)
+                files = []
+
+                class StartupFile:
+                    def __init__(self, file, name):
+                        self.file, self.name = file, name
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *args):
+                        self.file.close()
+
+                    def write(self, text):
+                        if failure == "header" and self.name == "raw.csv":
+                            raise OSError("header write failed")
+                        return self.file.write(text)
+
+                    def flush(self):
+                        if (failure, self.name) in (("raw_flush", "raw.csv"),
+                                                    ("samples_flush", "samples.csv")):
+                            raise OSError("header flush failed")
+                        return self.file.flush()
+
+                def opening(path, *args, **kwargs):
+                    name = Path(path).name
+                    if (failure, name) in (("raw_open", "raw.csv"),
+                                          ("samples_open", "samples.csv")):
+                        raise PermissionError("CSV could not be opened")
+                    file = real_open(path, *args, **kwargs)
+                    files.append(file)
+                    return StartupFile(file, name)
+
+                with ExitStack() as faults:
+                    faults.enter_context(patch("magtrack_src.recording.data_log.open",
+                                               side_effect=opening, create=True))
+                    if failure == "folder":
+                        faults.enter_context(patch.object(log, "_new_folder",
+                                                          side_effect=PermissionError("folder denied")))
+                    if failure == "metadata":
+                        faults.enter_context(patch.object(Path, "write_text",
+                                                          side_effect=OSError("metadata write failed")))
+                    with self.assertRaises(OSError):
+                        log.start()
+
+                status = log.status()
+                self.assertFalse(status["active"])
+                self.assertIsNone(status["last"])
+                self.assertIn("Recording could not start", status["error"])
+                self.assertTrue(all(file.closed for file in files))
+                # Retry must create a complete recording, without reusing a
+                # partial folder or a handle from the failed attempt.
+                name = log.start()
+                self.assertTrue(log.status()["active"])
+                self.assertIsNone(log.status()["error"])
+                log.stop()
+                folder = log.root / name
+                self.assertEqual((folder / "raw.csv").read_text().splitlines()[0], ",".join(RAW_COLUMNS))
+                self.assertTrue((folder / "plot.html").exists())
+
+    def test_failed_start_preserves_last_completed_recording(self):
+        name = self.log.start()
+        self.log.stop()
+        with patch.object(self.log, "_new_folder", side_effect=OSError("disk unavailable")):
+            with self.assertRaises(OSError):
+                self.log.start()
+        self.assertEqual(self.log.status()["last"], name)
+        self.assertFalse(self.log.status()["active"])
+
+    def test_start_reports_a_recording_root_that_is_a_file(self):
+        self.log.root.parent.mkdir(parents=True, exist_ok=True)
+        self.log.root.write_text("not a directory")
+        with self.assertRaises(OSError):
+            self.log.start()
+        self.assertFalse(self.log.status()["active"])
+        self.assertIn("Recording could not start", self.log.status()["error"])
 
 
 class Plot(unittest.TestCase):

@@ -79,6 +79,10 @@ the 95% value has 95% at or below it. Only samples with at least
 count toward the field-comparison scores. Agreement near the reference
 orientation proves little. The still-variation calculation uses raw readings
 averaged into 50 ms intervals; it combines variation across all three axes.
+It reports the square root of the sum of the three axes' pooled sample
+variances, rather than an average per-axis value. For example, 1 uT of sample
+variation on each axis gives about 1.73 uT combined variation. It includes any
+field changes during the selected intervals, not only the sensor's own noise.
 
 The two panels use the same template, chart scale, and 3D camera. Orientation,
 gyroscope zero-rate estimates, and long pauses between updates are shown once
@@ -291,8 +295,9 @@ threads and handles shutdown.
 | [calibration](../magtrack_src/calibration/magnetometer-calibration.md) | Tumble and mounting fits, JSON store | Fits are pure calculations; `CalibrationFile` performs file I/O |
 | [tracking](../magtrack_src/tracking/magnetic-tracking.md) | Per-sensor processing steps and `Pair` coordination | No hardware/web imports; `Tracker` calls its injected store during control operations |
 | [position](../magtrack_src/position/coil-position-tracking.md) | Coil model, numerical fitting, live solve, point collection | `Locator` also owns threads and JSON persistence |
-| [recording](../magtrack_src/recording/recording-and-analysis.md) | CSV writing, log plots, comparison | `data_log` and `compare` import schema/reading helpers from `log_plot` |
+| [recording](../magtrack_src/recording/recording-and-analysis.md) | CSV writing, log plots, comparison | `schema.py` owns column definitions, row formatting and reading; `data_log` still requests plots on recording stop |
 | [web](../magtrack_src/web/web-interface.md) | HTTP routes, feed buffer, browser scripts | Calls injected services; browser scripts share globals in HTML load order |
+| Shared saved-data helpers | `validation.py`: finite numbers, three-component vectors and orthogonal mounting matrices; `persistence.py`: JSON reads and temporary-file replacement | Validation has no I/O; persistence does not own live state or operation ordering |
 
 These links are the package guides. They describe local implementation details;
 system behavior and operating instructions are maintained here. `tests/` contains
@@ -302,6 +307,14 @@ files are listed under [persistence](#persistence-streaming-and-reproducibility)
 Source imports and runtime calls are different boundaries: `Pair` does not
 import hardware or position classes, but it calls its injected reader and
 locator. The package diagram alone is not a guarantee of independent services.
+
+Within `position`, `coil_model.py` owns the field and local movement-per-field-change
+calculations, `coil_fit.py` owns numerical fitting, and `position_solver.py`
+owns the current solve and point checks. Those modules have no live state,
+worker threads or file access. `locate.py` coordinates those calculations with
+measurement collection, live state, workers and persistence. The current solver
+still selects the nearer mirror using its starting position; moving it to a
+separate module has not yet separated matching from movement-history policy.
 
 ## One acquisition step
 
@@ -339,6 +352,14 @@ than every conversion the MMC thread performed.
 ## Data contracts
 
 Samples are dictionaries, without a central type or schema validator.
+
+Internally, locator calibration entries use `CoilCalibrationMeasurement` from
+`position/measurements.py`: entered `position_cm`, home-relative
+`field_difference_ut`, and `max_field_deviation_ut` during capture. This named
+tuple preserves numerical precision and the existing saved JSON keys. It does
+not yet carry capture timestamps or calibration/reference identifiers; those
+remain work in the plan. It must not be interpreted as an absolute coil-field
+measurement for the future lookup table.
 
 | Producer | Fields and availability |
 |---|---|
@@ -434,14 +455,14 @@ with arbitrary heading; magnetometer heading initialization is not implemented.
 |---|---|
 | Startup | Loads saved sensor corrections/mounting and coil data; each tracker begins an automatic reference capture at its current pose |
 | Gyro rest detected | Replaces that tracker's in-memory bias; it is written to disk only with a completed tumble |
-| Calibrate magnetometers / Cancel calibration | Starts fresh collection / discards collection; existing corrections keep running; start clears the previous displayed result |
-| Calculate and save corrections | Fits outside the tracker lock, applies corrections, optionally applies MMC mounting, saves files, starts another reference capture |
+| Calibrate magnetometers / Cancel calibration | Starts fresh collection / discards collection and any unfinished calculation; existing corrections keep running; start clears the previous displayed result |
+| Calculate and save corrections | Fits outside locks, discards superseded results, otherwise applies corrections, optionally applies MMC mounting, saves files, starts another reference capture |
 | Apply magnetometer midpoint and scale corrections | Keeps saved corrections but changes their use; clears the field reference and starts a new capture |
 | Measure reference field at sensor home | Starts averaging; the previous reference remains usable until replacement completes; resets peaks and the sample block when complete |
-| Clear sensor calibration | Clears sensor corrections, bias and tumble result; keeps MMC mounting, coil points/model/home, orientation state, and logs; starts another capture |
+| Clear sensor calibration | Invalidates unfinished tumble calculations, waits for any already-applied result to finish saving, then clears sensor corrections, bias and tumble result; keeps MMC mounting, coil points/model/home, orientation state, and recordings; starts another capture |
 | Save sensor home coordinates | Validates entered coordinates, keeps current coil-coordinate points, starts refitting; legacy home-relative points are translated once |
 | Record field at entered position | Averages `LOCATE_POINT_SAMPLES` view errors; rejects excessive variation, otherwise appends a point and refits |
-| Delete coil calibration measurements | Removes points/model/checks; keeps entered home; current implementation does not cancel an active point capture |
+| Delete coil calibration measurements | Cancels point capture, invalidates pending fits/position results, clears fitting status and removes points/model/checks; keeps entered home |
 
 Capture requires at least `CAPTURE_S` (0.3 s) and `CAPTURE_MIN_MAG` (20) fresh
 readings, restarting beyond 15 degrees from its starting pose. It averages in
@@ -498,7 +519,7 @@ measurement, or candidate-position selection screen. Those belong to
 The coil is an effective two-pole bar magnet with fitted center, strength/axis,
 and half-length. Fitting starts from a coarse grid of centers near zero and
 refines the parameters with an iterative least-squares calculation (Levenberg-Marquardt), repeatedly reducing the squared differences between modelled and recorded fields. The center is limited by
-`LOCATE_CENTER_SLACK_CM` (4 cm); half-length is clamped to bounds inside `locate.py`.
+`LOCATE_CENTER_SLACK_CM` (4 cm); half-length is clamped to bounds inside `coil_model.py`.
 Four points is a minimum count, not proof of adequate geometry or a good fit.
 
 The live solve starts at the previous position (initially home), tries other
@@ -553,15 +574,61 @@ not independent acquisition or global tracking accuracy.
 
 Trackers, locator, log, feed buffer, and MMC slot have individual locks.
 Connection/error attributes and `Pair` coordination/caches do not share one
-transaction lock. Locator saves also have a save lock and use temporary-file
-replacement. Sensor calibration files use direct writes.
+transaction lock. Locator saves also have a save lock. Sensor and coil stores
+use the shared temporary-file replacement helper.
+
+Each `Tracker` has a calibration revision. Reset, Cancel, starting another
+tumble or toggling corrections invalidates an unfinished tumble calculation.
+An obsolete result cannot change corrections, status or saved files. A separate
+control lock orders applying/saving a result with these controls: if saving
+has already started, Reset waits for it and then deletes the correction and
+tumble-log files. The sensor state lock is released during disk I/O, so
+acquisition and status reads do not wait on that control lock. Applying new
+corrections also clears any partially averaged sample block.
+
+A computation failure in either tumble or mounting fitting leaves existing
+corrections in use, reports the failure and saves a failed-attempt log if
+possible. A completed fit with a poor quality flag is still applied. A save
+failure after application reports that the in-memory corrections were applied
+but not all files were saved; the HTTP response reports the save error. Each
+file is replaced only after its temporary version is written, flushed and
+synchronized to disk. Failed writes preserve that file's previous complete
+version. These replacements are not an atomic group: a mixture of old and new
+files can remain after a failure. Sudden power loss still depends on filesystem
+behavior; the containing directory is not explicitly synchronized. The control
+lock protects one tracker instance, not separate programs sharing its files.
+
+`Locator` advances a local calibration revision when measurements/home change
+and when a fitted model is applied. A fit result is applied only if its input
+revision is still current, even if a later operation recreated identical input
+values. Clearing measurements cancels their capture and immediately resets the
+fitting flag; obsolete workers cannot restore data or change a newer worker's
+status. Running calculations are allowed to finish but their obsolete results
+are discarded.
+
+Position calculations also check the calibration revision and observed reference
+generation before returning a result or updating the previous position. Invalid
+magnetic vectors and nonfinite calculated positions, mismatch, distances or
+sensitivity are rejected. This protects the live position boundary; it does not
+validate every upstream sample or numerical fitting result. Saved calibration
+validation is described under persistence below. Reference changes
+are still detected from rounded field values as described under lifecycle,
+so separate captures with identical values remain indistinguishable.
+
+Saves take their snapshot after acquiring the save lock. If calibration changes
+during the temporary-file write, the obsolete snapshot is discarded and the
+save retries with current state. The revision check and final replacement occur
+under the state lock. A failed obsolete write cannot overwrite a newer status
+message. These locks protect one `Locator` instance, not multiple programs or
+instances writing the same file.
 
 Tumble fitting and coil fitting run outside their state locks. Live position
 solving and logging still run on the acquisition thread; CSV writes/flushes
 hold the log lock. Other Python threads can also compete for interpreter time.
-There is no real-time or nonblocking acquisition guarantee. Locator checks
-points/home before committing a fit, but other in-flight operations do not all
-have equivalent stale-result guards; see the review.
+There is no real-time or nonblocking acquisition guarantee. The locator guards
+above do not provide an application-wide transaction: correction/model
+compatibility, identifiers for saved setups and cross-object
+coordination still have the limitations recorded in the review and next steps.
 
 Drivers retry `OSError` after a two-second wait. On ICM reopening, both trackers
 keep their reference and previous orientation, clear their orientation histories
@@ -573,6 +640,16 @@ appear in the sensor status text;
 there is no large history banner or dedicated dismissible reconnect warning. MMC-only reconnects
 do not reset the MMC tracker. An ordinary IMU step longer than `MAX_GAP_S` is
 counted and skipped for integration, without recovering the motion that was not measured.
+
+Recording startup opens its CSV files locally, writes and flushes their
+headers, then publishes the active recording state. If folder creation or any
+startup write fails with `OSError`, opened CSV files are closed, recording stays
+inactive, and the failure reason appears in status. The last completed recording
+is preserved. Partial files can remain in the failed attempt's folder for
+inspection; they are not presented as a completed recording. A retry creates a
+new folder. The recording button displays rejected requests and network errors
+and allows another attempt. The HTTP control handler returns ordinary error
+JSON for `OSError` as well as `ValueError`.
 
 Logged write errors end the active log. Other exceptions are not universally
 converted into a failed/invalid sensor state. The HTTP server is intended for
@@ -608,7 +685,7 @@ available, such as a missing fresh magnetic reading or reference field.
 | `data/calibration/mmc_mounting.json` | MMC axis mapping; tracked in git, retained by sensor reset |
 | `data/calibration/coil_cal.json` | Entered home, entered positions, field differences, reading variation, fitted model/checks; old files without home need coordinate conversion through Save sensor home coordinates |
 | `data/logs/<start>/raw.csv` | Every ICM loop reading in board axes without software offset removal; fresh AK values or blanks, consumed MMC values in chip axes and their ages |
-| `samples.csv` | Rounded estimates at the ICM display-update rate and position coordinates; no position-quality/history flags; cached MMC values can repeat; columns live in `recording/log_plot.py` |
+| `samples.csv` | Rounded estimates at the ICM display-update rate and position coordinates; no position-quality/history flags; cached MMC values can repeat; columns and row formatting live in `recording/schema.py` |
 | `info.json` | Tracker/locator status at log start, not a complete configuration or history of subsequent changes |
 | `plot.html` | Self-contained plot generated at stop or by the plotting CLI; no position-ambiguity warning |
 
@@ -616,6 +693,33 @@ CSV time is monotonic seconds from the first logged reading; folder names and
 metadata use wall time. Mid-run bias, reference, calibration, and model changes
 are not fully recorded as events. Old position columns carry no origin version,
 so historical home-relative logs need care when interpreted by current tools.
+
+Saved sensor and coil calibration files are validated before any of their
+values are installed. Vectors must have exactly three finite numeric components;
+booleans, numeric strings, and values too large for the vector calculations are
+rejected. Sensor axis scale multipliers must be positive. Mounting matrices must
+have three unit, perpendicular rows within a `1e-5` dot-product tolerance;
+rotations and reflections are accepted because the existing mounting fit
+supports both. Coil strength must be nonzero, its half-length must be within
+the fitter's 0.2-6 cm bounds, and the saved home must meet the existing 3 cm
+minimum distance. The model field and sensitivity at home must be finite.
+Measurement variation and check distances must be nonnegative; unavailable
+check distances can be null. These structural checks do not prove physical
+accuracy, environmental uniformity, or compatibility with current corrections.
+
+Missing files are a normal first run. A malformed or unreadable file is left
+untouched and ignored as a whole: sensor corrections return to their defaults,
+mounting remains unknown, or coil tracking remains unconfigured. Startup exposes
+the reason in the relevant sensor or position status message. Older sensor
+files missing bias/gains retain zero/unit defaults; older coil files missing
+home retain their explicit home-relative conversion workflow. File formats
+have no schema version or shared setup identifier yet.
+
+Sensor correction, mounting, last-tumble log and coil saves use complete-file
+replacement. Serialization rejects nonfinite JSON numbers before replacement;
+temporary files from failed or obsolete attempts are removed when possible.
+This protects each previous file, not consistency across the whole file set or
+against independent programs writing the same paths.
 
 `Feed` retains 200 samples. `/stream` sends newer samples plus status roughly
 every 50 ms, subject to scheduling and client speed. Each new connection starts

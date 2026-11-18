@@ -10,7 +10,7 @@ from pathlib import Path
 from magtrack_src.calibration.mounting import (determinant, mean_ambient_field, fit_axes, nearest_rotation, plain_mappings,
                       turned_deg)
 from magtrack_src.calibration.store import CalibrationFile
-from magtrack_src.recording.compare import compare, noise_ut, report, still_stretches, verdict
+from magtrack_src.recording.compare import NOISE_WINDOW_S, compare, noise_ut, report, still_stretches, verdict
 from magtrack_src.recording.data_log import DataLog
 from magtrack_src.geometry.vectors import mat_vec, norm, quat_conj, quat_rotate
 from magtrack_src.hardware.mmc5983 import COUNTS_PER_UT, counts, field_ut
@@ -393,6 +393,16 @@ class Scoring(unittest.TestCase):
     def test_moving_is_not_still(self):
         rows = [{"t_s": str(i * .01), "gx_dps": "20", "gy_dps": "0", "gz_dps": "0"} for i in range(300)]
         self.assertEqual(still_stretches(rows), [])
+
+    def test_noise_combines_all_axes_instead_of_averaging_them(self):
+        # Three distinct time windows; sample standard deviations are 1, 2, 3.
+        rows = [{"t_s": str(i * NOISE_WINDOW_S), "x": str(v),
+                 "y": str(2 * v), "z": str(3 * v)}
+                for i, v in enumerate((-1, 0, 1))]
+        self.assertAlmostEqual(noise_ut([rows], ("x",)), 1.0)
+        self.assertAlmostEqual(noise_ut([rows], ("y",)), 2.0)
+        self.assertAlmostEqual(noise_ut([rows], ("z",)), 3.0)
+        self.assertAlmostEqual(noise_ut([rows], ("x", "y", "z")), math.sqrt(14))
 
     def test_verdicts(self):
         r = {"icm": {"direction": (2.0, 3, 4)}, "mmc": {"direction": (1.0, 2, 3)}}

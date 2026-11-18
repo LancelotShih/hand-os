@@ -9,7 +9,10 @@ from pathlib import Path
 
 from magtrack_src.config import LOCATE_CENTER_SLACK_CM, LOCATE_POINT_SAMPLES
 from magtrack_src.geometry.vectors import add, norm, sub
-from magtrack_src.position.locate import Coil, Locator, check_points, fit_coil, mm_per_ut, solve
+from magtrack_src.position.coil_model import Coil, mm_per_ut
+from magtrack_src.position.coil_fit import fit_coil
+from magtrack_src.position.position_solver import check_points, solve
+from magtrack_src.position.locate import Locator
 from magtrack_src.tracking.pair import Pair
 from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard, axis_quat
 from magtrack_src.tracking.tracker import Tracker

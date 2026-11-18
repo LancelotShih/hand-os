@@ -6,37 +6,21 @@
         info.json      tracker/locator status at start, not a full event history
         plot.html      the visual, written when the log stops
 
-Used by: earth_cancel.py, hardware/icm_loop.py, web/server.py.  Uses: recording/log_plot.py.
+Used by: earth_cancel.py, hardware/icm_loop.py, web/server.py.
+Uses: recording/schema.py; recording/log_plot.py when a recording stops.
 """
 
 import csv
 import json
 import threading
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
-from magtrack_src.recording.log_plot import SAMPLE_COLUMNS, write_plot
+from magtrack_src.recording.log_plot import write_plot
+from magtrack_src.recording.schema import RAW_COLUMNS, SAMPLE_COLUMNS, format_cells, sample_row
 
-RAW_COLUMNS = ["t_s", "ax_g", "ay_g", "az_g", "gx_dps", "gy_dps", "gz_dps",
-               "mx_ut", "my_ut", "mz_ut",
-               "mmc_x_ut", "mmc_y_ut", "mmc_z_ut", "mmc_age_s"]
 FLUSH_S = 1.0             # flush Python file buffers; not a power-loss durability guarantee
-
-
-def _cells(values):
-    return ["" if v is None else f"{v:.5f}" for v in values]
-
-
-def _sample_row(t, s):
-    m = s.get("mmc") or {}
-    position = (s.get("locate") or {}).get("position")
-    return _cells([t, *s["quat"], *s["euler"], s["turn"], *s["measured"],
-                   *(s["predicted"] or [None] * 3), *(s["error"] or [None] * 3), s["error_ut"],
-                   s.get("error_deg"), *(m.get("measured") or [None] * 3),
-                   *(m.get("predicted") or [None] * 3), *(m.get("error") or [None] * 3),
-                   m.get("error_ut"), m.get("error_deg"),
-                   s.get("calibration_on"), m.get("calibration_on"),
-                   *(position or [None] * 3)])
 
 
 class DataLog:
@@ -60,6 +44,8 @@ class DataLog:
                 (self.root / name).mkdir(parents=True)
                 return self.root / name
             except FileExistsError:
+                if not self.root.is_dir():
+                    raise
                 n += 1
                 name = f"{stamp}_{n}"
 
@@ -67,17 +53,30 @@ class DataLog:
         with self._lock:
             if self._folder is not None:
                 raise ValueError("A recording is already in progress.")
-            folder = self._new_folder()
-            (folder / "info.json").write_text(json.dumps(
-                {"started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **(info or {})}, indent=2))
-            self._raw_file = open(folder / "raw.csv", "w", newline="")
-            self._samples_file = open(folder / "samples.csv", "w", newline="")
-            self._raw = csv.writer(self._raw_file)
-            self._samples = csv.writer(self._samples_file)
-            self._raw.writerow(RAW_COLUMNS)
-            self._samples.writerow(SAMPLE_COLUMNS)
-            self._folder, self._t0, self._rows, self._error = folder, None, 0, None
-            self._started = time.monotonic()
+            # Keep new handles local until every startup write has succeeded.
+            # Failed attempts may leave partial files, but never become active
+            # or replace the last completed recording.
+            try:
+                folder = self._new_folder()
+                with ExitStack() as opened:
+                    (folder / "info.json").write_text(json.dumps(
+                        {"started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **(info or {})}, indent=2))
+                    raw_file = opened.enter_context(open(folder / "raw.csv", "w", newline=""))
+                    samples_file = opened.enter_context(open(folder / "samples.csv", "w", newline=""))
+                    raw, samples = csv.writer(raw_file), csv.writer(samples_file)
+                    raw.writerow(RAW_COLUMNS)
+                    samples.writerow(SAMPLE_COLUMNS)
+                    raw_file.flush()
+                    samples_file.flush()
+                    started = time.monotonic()
+                    self._raw_file, self._samples_file = raw_file, samples_file
+                    self._raw, self._samples = raw, samples
+                    self._folder, self._t0, self._rows, self._error = folder, None, 0, None
+                    self._started = started
+                    opened.pop_all()  # ownership transfers to the active recording
+            except OSError as e:
+                self._error = f"Recording could not start: {e}"
+                raise
             return folder.name
 
     def add(self, now, accel, gyro, mag, sample, mmc=None):
@@ -92,9 +91,9 @@ class DataLog:
             t = now - self._t0
             try:
                 field, age = mmc or ([None] * 3, None)
-                self._raw.writerow(_cells([t, *accel, *gyro, *(mag or [None] * 3), *field, age]))
+                self._raw.writerow(format_cells([t, *accel, *gyro, *(mag or [None] * 3), *field, age]))
                 if sample is not None:
-                    self._samples.writerow(_sample_row(t, sample))
+                    self._samples.writerow(sample_row(t, sample))
                     self._rows += 1
                 if now - self._flushed >= FLUSH_S:
                     self._flushed = now

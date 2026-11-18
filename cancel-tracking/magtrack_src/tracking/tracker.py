@@ -29,6 +29,10 @@ class Tracker:
                  axes=None, fit_mounting=False, block_samples=BLOCK_SAMPLES,
                  use_calibration=True):
         self._lock = threading.Lock()
+        # Controls take this before _lock. Fitting and sensor updates never hold
+        # it; applying/saving a result and clearing it must happen in order.
+        self._calibration_commit_lock = threading.Lock()
+        self._calibration_revision = 0
         self.axes = axes or IDENTITY              # sensor -> board; applied after the offset
         self._fit_mounting = fit_mounting         # True: a tumble replaces ``axes``
         self.mounted = axes is not None or not fit_mounting
@@ -186,9 +190,10 @@ class Tracker:
     def set_calibration(self, on):
         """Use the tumble's midpoints and corrections, or the readings as they came.
         The reference used the old correction, so it must be captured again."""
-        with self._lock:
+        with self._calibration_commit_lock, self._lock:
             if self._tumble is not None:
                 raise ValueError("Finish or cancel the magnetometer calibration before changing its corrections.")
+            self._calibration_revision += 1
             self.use_calibration = on
             self.reference_field = None
             self._block = []
@@ -196,19 +201,25 @@ class Tracker:
             self._capture = ReferenceCapture()
 
     def tumble_start(self):
-        with self._lock:
+        with self._calibration_commit_lock, self._lock:
+            self._calibration_revision += 1
             self._tumble = Tumble()
             self.tumble_result = None
             self.message = None
 
     def tumble_cancel(self):
-        with self._lock:
+        with self._calibration_commit_lock, self._lock:
+            self._calibration_revision += 1
             self._tumble = None
 
     def tumble_finish(self):
-        """Fit without holding the state lock, then install and save the result.
-        A new reference capture follows. Concurrent controls currently have no
-        revision guard against an obsolete fit completing afterward."""
+        """Fit outside locks; apply/save only if no later control superseded it.
+
+        Reset, cancellation, another tumble or a correction toggle invalidates
+        an unfinished calculation. Saving and Reset are serialized, without
+        blocking sensor updates on disk I/O. A new reference capture follows
+        an applied fit, including a completed fit with a poor quality flag.
+        """
         with self._lock:
             t = self._tumble
             if t is None:
@@ -216,51 +227,68 @@ class Tracker:
             if not t.ready:
                 raise ValueError("Keep rotating the board through all orientations. More field directions or magnetic readings are needed for calibration.")
             self._tumble = None
+            revision = self._calibration_revision
+        failure = None
         try:
             result = fit_tumble(t.points)
+            offset = tuple(c * g for c, g in zip(result["center"], result["gains"]))
+            centred = [tuple(m * g - o for m, g, o in zip(p, result["gains"], offset)) for p in t.points]
+            result["mounting"] = fit_axes(centred, t.quats)
         except ValueError as e:
-            if self._store is not None:
-                self._store.log_tumble(t.points, None)
+            result = None
+            failure = f"Magnetometer calibration failed: {e}"
+        with self._calibration_commit_lock:
             with self._lock:
-                self.message = f"Magnetometer calibration failed: {e}"
-            return
-        offset = tuple(c * g for c, g in zip(result["center"], result["gains"]))
-        centred = [tuple(m * g - o for m, g, o in zip(p, result["gains"], offset)) for p in t.points]
-        result["mounting"] = fit_axes(centred, t.quats)
-        with self._lock:
-            self.gains = tuple(result["gains"])
-            self.offset = offset
-            if self._fit_mounting:
-                self.axes = result["mounting"]["axes"]
-                self.mounted = True
-            self.reference_field = None
-            self.tumble_result = result
-            self.message = None
-            self._capture = ReferenceCapture()
-            bias = self.bias
-        if self._store is not None:
-            self._store.log_tumble(t.points, result)
-            self._store.save(offset, bias, result["gains"])
-            if self._fit_mounting:
-                self._store.save_axes(result["mounting"]["axes"])
+                if revision != self._calibration_revision:
+                    return
+                self.message = failure
+                if result is not None:
+                    self.gains = tuple(result["gains"])
+                    self.offset = offset
+                    if self._fit_mounting:
+                        self.axes = result["mounting"]["axes"]
+                        self.mounted = True
+                    self.reference_field = None
+                    self.tumble_result = result
+                    self._block = []
+                    self._capture = ReferenceCapture()
+                    bias = self.bias
+            if self._store is not None:
+                try:
+                    self._store.log_tumble(t.points, result)
+                    if result is not None:
+                        self._store.save(offset, bias, result["gains"])
+                        if self._fit_mounting:
+                            self._store.save_axes(result["mounting"]["axes"])
+                except (OSError, ValueError) as e:
+                    with self._lock:
+                        self.message = (f"{failure} Couldn't save the failed attempt: {e}" if failure else
+                                        f"Magnetometer calibration applied, but could not save all calibration files: {e}")
+                    raise
 
     def reset_calibration(self):
-        """Start again from nothing, as on a first run.  Stops any tumble."""
-        with self._lock:
-            self.gains = (1.0, 1.0, 1.0)
-            self.offset = self.reference_field = None
-            self.bias = (0.0, 0.0, 0.0)
-            self._tumble = self.tumble_result = None
-            self._block = []
-            self._peak = self._peak_deg = 0.0
-            self.message = "Sensor calibration cleared. Rest the board for about a second to estimate the gyroscope zero rate, then click Calibrate magnetometers."
-            self._capture = ReferenceCapture()
-        if self._store is not None:
-            try:
-                self._store.clear()
-            except OSError as e:
-                with self._lock:
-                    self.message = f"Couldn't delete the saved calibration: {e}"
+        """Clear corrections and cancel collection or fitting; retain mounting.
+
+        Wait for any already-committed save before deleting its files. A fit
+        still calculating is invalidated and will neither apply nor save.
+        """
+        with self._calibration_commit_lock:
+            with self._lock:
+                self._calibration_revision += 1
+                self.gains = (1.0, 1.0, 1.0)
+                self.offset = self.reference_field = None
+                self.bias = (0.0, 0.0, 0.0)
+                self._tumble = self.tumble_result = None
+                self._block = []
+                self._peak = self._peak_deg = 0.0
+                self.message = "Sensor calibration cleared. Rest the board for about a second to estimate the gyroscope zero rate, then click Calibrate magnetometers."
+                self._capture = ReferenceCapture()
+            if self._store is not None:
+                try:
+                    self._store.clear()
+                except OSError as e:
+                    with self._lock:
+                        self.message = f"Couldn't delete the saved calibration: {e}"
 
     def sensor_lost(self):
         """Back after a gap with no readings. The reference capture is kept, so home is

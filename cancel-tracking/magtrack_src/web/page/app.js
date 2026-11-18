@@ -1,6 +1,7 @@
 // Live data from the server, the readouts and the buttons.  Every sensor readout
 // goes through the same functions, once per side.
 let latest = null, state = null;
+let recordingRequestError = null;
 const HIST_S = 20;
 
 function post(path) { fetch(path, {method:"POST"}); }
@@ -14,7 +15,22 @@ $("reset").onclick = () => {
   }
 };
 SIDES.forEach(side => { side.part("usecal").onchange = () => post("/calibration/" + side.key + "/toggle"); });
-$("log").onclick = () => post(state && state.log.active ? "/log/stop" : "/log/start");
+$("log").onclick = async () => {
+  const button = $("log");
+  button.disabled = true;
+  try {
+    const response = await fetch(state && state.log.active ? "/log/stop" : "/log/start", {method:"POST"});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "The server rejected the recording request.");
+    recordingRequestError = null;
+  } catch (error) {
+    recordingRequestError = "Recording request failed: " + error.message;
+  } finally {
+    button.disabled = false;
+    if (state) showLog(state.log);
+    else $("logstat").textContent = recordingRequestError || "";
+  }
+};
 
 // The server sends the ICM at the top level and the MMC, in the same shape, inside it.
 const sampleOf = side => side.key === "icm" ? latest : latest && latest.mmc;
@@ -135,8 +151,8 @@ function showShared() {
 function showLog(l) {
   $("log").textContent = l.active ? "Stop recording" : "Start recording";
   $("log").className = l.active ? "primary" : "";
-  $("logstat").textContent = l.error ? l.error
-    : l.active ? "Recording " + l.name + " (" + l.seconds.toFixed(0) + " s elapsed)" : "";
+  $("logstat").textContent = recordingRequestError || l.error
+    || (l.active ? "Recording " + l.name + " (" + l.seconds.toFixed(0) + " s elapsed)" : "");
   const link = !l.active && l.last;
   $("loglink").textContent = link ? "Open plots for recording " + l.last : "";
   if (link) $("loglink").href = "logs/" + l.last + "/plot.html";
