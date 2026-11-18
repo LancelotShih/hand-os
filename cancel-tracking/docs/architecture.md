@@ -44,11 +44,14 @@ tracking/pair.py          sample["mmc"] = MMC's latest view sample
         ▼
 hardware/icm_loop.py      recording/data_log.py .add(raw readings + sample)  (if logging)
                           web/feed.py .push(sample)
-        ▼
-web/server.py /stream     Server-sent events: each new sample, plus "status" every 50 ms
-        ▼
-web/page/app.js           draws it
+       ├───────────────── web/server.py /stream → browser (server-sent events)
+       └───────────────── transmission/inference_server_transmission.py
+                             Pi WebSocket server → laptop client (binary packets)
 ```
+
+The laptop stream currently sends one packet per view sample (about 20 Hz).
+Its 100 Hz target is deferred. The live Locator output fills the index fields
+after conversion from cm to mm; thumb fields are temporary zero placeholders.
 
 ### The view sample (`Tracker._sample`)
 
@@ -56,7 +59,8 @@ web/page/app.js           draws it
 `measured_mag`, `predicted` (= E), `predicted_mag`, `error`, `error_ut`, `error_deg`,
 `peak`, `peak_deg`, `calibration_on`. `Pair` adds `mmc` (the same shape, or `None`)
 and `locate` (`position` in cm or `None` plus `why`, `from_coil_cm`, `from_home_cm`,
-`mismatch_ut`, `mm_per_ut`). `Feed` adds `seq`.
+`mismatch_ut`, `mm_per_ut`). The ICM loop adds `timestamp_ms` from its monotonic
+sample time; `Feed` adds `seq`.
 
 ### Status (`/state`, and the stream's `status` event)
 
@@ -94,6 +98,7 @@ plus `connected`/`error`) and `locate` (`Locator.status()`). `server.py` adds
 | main | `ThreadingHTTPServer.serve_forever`; one extra thread per request, and `/stream` holds one per open tab | `Pair` control methods, `Feed.since`, `DataLog.start/stop` |
 | ICM loop | `hardware/icm_loop.sensor_loop` | `Pair.update`, `DataLog.add`, `Feed.push` |
 | MMC loop | `hardware/mmc_loop.MmcReader.run` | Its own `_fresh` slot, which `Pair` takes from |
+| WebSocket producer | `transmission.inference_server_transmission.transmission_loop` | `Feed.since`, one laptop client |
 | coil fit / save | Started by `Locator` | `Locator` state |
 
 Every shared object guards its state with its own `threading.Lock`. Fits run outside

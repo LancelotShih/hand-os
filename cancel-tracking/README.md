@@ -85,6 +85,7 @@ keeps trying to reconnect.
 
 ```bash
 cd cancel-tracking
+python3 -m pip install -r requirements.txt
 ./earth_cancel.py     # open http://<this-pi's-ip>:8000
 ```
 
@@ -114,6 +115,27 @@ erases it all, so the next run starts from nothing. Recorded logs and the MMC's
 mounting are kept.
 
 The limit is `PASS_UT` in `magtrack_src/config.py`. It sets every green and red on the page.
+
+## Laptop position stream (interim)
+
+The Pi also listens as a WebSocket server on port 8765; the laptop connects to
+`ws://<this-pi's-ip>:8765`. It sends one binary 44-byte packet per view sample,
+currently about 20 Hz. The protocol target is 100 Hz, deferred for now.
+
+The current Locator position is sent in the index fields, converted from cm to
+mm. Thumb coordinates are temporary zero placeholders until a thumb position
+source is available. Do not treat those thumb values as measured data. Timestamp
+gaps are present in the stream; consumer-side missing-reading detection is deferred.
+
+For a minimal laptop-side receiver, run this from the laptop project checkout:
+
+```bash
+python3 -m magtrack_src.transmission.inference_receiver ws://<pi-ip>:8765
+```
+
+It connects to the Pi, decodes and validates each binary packet, and prints every
+received reading. It is only a display/test client for now; it does not run inference
+or record data.
 
 ## Position
 

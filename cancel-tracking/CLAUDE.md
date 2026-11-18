@@ -7,11 +7,11 @@ An MMC5983MA can run beside the ICM's magnetometer (AK09916) so the two can be c
 but it's off by default (`MMC_ON` in `config.py`, `--mmc` for one run). Position uses only the ICM.
 End goal: the ICM on a glove fingertip, the coil on the back of the palm.
 
-Run with the system `python3` on the Pi (stdlib + `smbus2`, no numpy).
+Run with the system `python3` on the Pi (stdlib + `smbus2` and `websockets`, no numpy).
 
 ```bash
 ./earth_cancel.py                                        # web page on http://<pi>:8000 (add --mmc for the MMC)
-python3 -m unittest                                      # 119 tests, ~65 s, no hardware
+python3 -m unittest                                      # all tests, no hardware
 python3 -m magtrack_src.recording.compare data/logs/<name>     # score a log made with --mmc
 python3 -m magtrack_src.recording.log_plot data/logs/<name>    # redraw a log's plot.html
 ```
@@ -112,7 +112,8 @@ hardware. Judge approaches from the code, not from old logs or session transcrip
 
 ## Conventions
 
-- Stdlib only (plus `smbus2` in `hardware/`). Plain tuples, no numpy, so it runs on the Pi as is.
+- Stdlib plus `smbus2` for hardware and `websockets` for the laptop stream. Plain tuples,
+  no numpy, so it runs on the Pi without numerical packages.
 - Pure logic stays free of I/O and gets a test against `tests/sim/sim_board.py`.
 - Text the user reads (page, `(i)` help in `web/page/info.js`, README) is plain
   language with short sentences. For calibration, say lowest, highest, midpoint and

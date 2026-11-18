@@ -42,7 +42,7 @@ REST_MAX_BIAS_DPS = 3.0   # ... or averages more than this (that's a slow turn)
 
 # judging the result
 RATE_WINDOW_S = 1.0       # each magnetometer's readings per second is counted over this long
-BLOCK_SAMPLES = 5         # magnetometer samples per view update (100 Hz -> 20 Hz)
+BLOCK_SAMPLES = 5         # interim stream: 20 Hz (5 samples at 100 Hz); 100 Hz is deferred
 MMC_BLOCK_SAMPLES = 3     # the same for the MMC5983MA: about the same 50 ms, so the two
                           # are averaged over equal time and neither gets an easier test
 PASS_UT = 5.0             # the field accuracy we want: green under this, everywhere

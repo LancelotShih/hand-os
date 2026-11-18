@@ -24,9 +24,10 @@ def sensor_loop(bus, address, tracker, feed, log, stop, open_imu=IMU):
             while not stop.is_set():
                 accel, gyro, mag = imu.read()
                 now = time.monotonic()
-                sample = tracker.update(accel, gyro, mag, now)
+                sample = tracker.update(accel, gyro, mag, now) #tracker is actually a Pair object
                 log.add(now, accel, gyro, mag, sample, tracker.reading)
                 if sample is not None:
+                    sample["timestamp_ms"] = int(now * 1000)
                     feed.push(sample)
         except OSError as e:
             feed.connected, feed.error = False, str(e)

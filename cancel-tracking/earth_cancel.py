@@ -29,7 +29,7 @@ from magtrack_src.tracking.pair import Pair
 from magtrack_src.hardware.icm_loop import sensor_loop
 from magtrack_src.web.server import local_ip, make_server
 from magtrack_src.tracking.tracker import Tracker
-
+from magtrack_src.transmission.inference_server_transmission import transmission_loop
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
@@ -68,7 +68,10 @@ def main(argv=None):
     server = make_server(args.host, args.port, tracker, feed, log)
     th = threading.Thread(target=sensor_loop, daemon=True,
                           args=(args.bus, args.address, tracker, feed, log, stop))
+    inference_transmission_th = threading.Thread(target=transmission_loop, args=(feed, stop), daemon=True)
+
     th.start()
+    inference_transmission_th.start()
     mmc_th = None
     if tracker.reader is not None:
         mmc_th = threading.Thread(target=tracker.reader.run, args=(stop,), daemon=True)
@@ -84,6 +87,7 @@ def main(argv=None):
     finally:
         stop.set()
         th.join(timeout=3.0)
+        inference_transmission_th.join(timeout=3.0)
         if mmc_th is not None:
             mmc_th.join(timeout=3.0)
         if log.status()["active"]:              # Ctrl+C mid-log still gives a complete log
