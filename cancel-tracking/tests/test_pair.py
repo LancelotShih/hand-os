@@ -7,17 +7,17 @@ import time
 import unittest
 from pathlib import Path
 
-from magtrack_src.calibration.mounting import (determinant, earth_seen, fit_axes, nearest_rotation, plain_mappings,
+from magtrack_src.calibration.mounting import (determinant, mean_ambient_field, fit_axes, nearest_rotation, plain_mappings,
                       turned_deg)
 from magtrack_src.calibration.store import CalibrationFile
-from magtrack_src.recording.compare import compare, noise_ut, report, still_stretches, verdict
+from magtrack_src.recording.compare import NOISE_WINDOW_S, compare, noise_ut, report, still_stretches, verdict
 from magtrack_src.recording.data_log import DataLog
 from magtrack_src.geometry.vectors import mat_vec, norm, quat_conj, quat_rotate
 from magtrack_src.hardware.mmc5983 import COUNTS_PER_UT, counts, field_ut
 from magtrack_src.hardware.mmc_loop import MmcReader
 from magtrack_src.tracking.pair import Pair
-from tests.sim.sim_board import EARTH, GYRO_BIAS, OFFSET, SimBoard
-from magtrack_src.tracking.tracker import Tracker
+from tests.sim.sim_board import AMBIENT_FIELD, GYRO_BIAS, OFFSET, SimBoard
+from tests.sim.sim_board import diagnostic_tracker
 
 MMC_OFFSET = (31.0, -12.0, 44.0)
 
@@ -59,7 +59,7 @@ class FakeReader:
         self.calls += 1
         if self.calls % 8 or not self.connected:
             return None
-        board = quat_rotate(quat_conj(self.board.q), EARTH)
+        board = quat_rotate(quat_conj(self.board.q), AMBIENT_FIELD)
         chip = mat_vec(transpose(self.axes), board)
         return (tuple(c + o + random.gauss(0, self.noise) for c, o in zip(chip, self.offset)),
                 self.board.t - 0.003)
@@ -67,8 +67,8 @@ class FakeReader:
 
 def pair_on_board(axes=QUARTER_TILTED, log=None):
     reader = FakeReader(axes)
-    pair = Pair(Tracker(offset=OFFSET, bias=GYRO_BIAS),
-                Tracker(bias=GYRO_BIAS, fit_mounting=True, block_samples=3), reader)
+    pair = Pair(diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS),
+                diagnostic_tracker(bias=GYRO_BIAS, fit_mounting=True, block_samples=3), reader)
     board = SimBoard(pair, gyro_bias=GYRO_BIAS)
     reader.board = board
     return pair, board, reader
@@ -76,14 +76,14 @@ def pair_on_board(axes=QUARTER_TILTED, log=None):
 
 class Mounting(unittest.TestCase):
     def tumble(self, chip_to_board, n=1500, noise=0.1):
-        board = SimBoard(Tracker(), gyro_bias=(0, 0, 0))
+        board = SimBoard(diagnostic_tracker(), gyro_bias=(0, 0, 0))
         points, quats = [], []
         random.seed(2)
         for i in range(n):
             u = i * .03
             for _ in range(10):
                 board.step((90 * math.sin(.71 * u), 110 * math.sin(.53 * u + 1.3), 80 * math.sin(.37 * u)))
-            b = quat_rotate(quat_conj(board.q), EARTH)
+            b = quat_rotate(quat_conj(board.q), AMBIENT_FIELD)
             points.append(tuple(v + random.gauss(0, noise)
                                 for v in mat_vec(transpose(chip_to_board), b)))
             quats.append(board.q)
@@ -116,8 +116,8 @@ class Mounting(unittest.TestCase):
     def test_backwards_and_forwards_score_the_same(self):
         points, quats = self.tumble(QUARTER_TILTED)
         backwards = [[-v for v in row] for row in QUARTER_TILTED]
-        self.assertAlmostEqual(norm(earth_seen(QUARTER_TILTED, points, quats)),
-                               norm(earth_seen(backwards, points, quats)))
+        self.assertAlmostEqual(norm(mean_ambient_field(QUARTER_TILTED, points, quats)),
+                               norm(mean_ambient_field(backwards, points, quats)))
 
     def test_a_square_sensor_shows_almost_no_tilt(self):
         points, quats = self.tumble(about(2, 0))
@@ -200,7 +200,7 @@ class SideBySide(unittest.TestCase):
         self.assertFalse(pair.mmc.status()["have_offset"])
 
     def test_no_mmc_at_all(self):
-        pair = Pair(Tracker(offset=OFFSET, bias=GYRO_BIAS))
+        pair = Pair(diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS))
         board = SimBoard(pair, gyro_bias=GYRO_BIAS)
         board.still(1.0)
         self.assertIsNone(pair.status()["mmc"])
@@ -238,7 +238,7 @@ class SideBySide(unittest.TestCase):
 
     def test_a_missing_mmc_cant_be_switched(self):
         with self.assertRaises(ValueError):
-            Pair(Tracker()).toggle_calibration("mmc")
+            Pair(diagnostic_tracker()).toggle_calibration("mmc")
 
     def test_reset_clears_both(self):
         pair, _, _ = self.calibrate()
@@ -251,13 +251,13 @@ class SideBySide(unittest.TestCase):
     def test_with_the_mounting_known_the_mmc_cancels_earth_with_no_tumble(self):
         reader = FakeReader(QUARTER_TILTED)
         reader.offset = (0.0, 0.0, 0.0)            # SET/RESET left nothing behind
-        pair = Pair(Tracker(offset=OFFSET, bias=GYRO_BIAS),
-                    Tracker(bias=GYRO_BIAS, axes=QUARTER_TILTED, fit_mounting=True,
+        pair = Pair(diagnostic_tracker(offset=OFFSET, bias=GYRO_BIAS),
+                    diagnostic_tracker(bias=GYRO_BIAS, axes=QUARTER_TILTED, fit_mounting=True,
                             block_samples=3, use_calibration=False), reader)
         board = SimBoard(pair, gyro_bias=GYRO_BIAS)
         reader.board = board
         board.still(1.0)                           # started up, nobody clicked anything
-        self.assertIsNotNone(pair.mmc.earth)
+        self.assertIsNotNone(pair.mmc.reference_field)
         self.assertFalse(pair.mmc.status()["have_offset"])
         board.samples.clear()
         board.turn((1, 0, 0), 150)
@@ -359,7 +359,7 @@ class Scoring(unittest.TestCase):
             with open(folder / "samples.csv", newline="") as f:
                 header = next(csv.reader(f))
             self.assertIn("plot.html", [p.name for p in folder.iterdir()])
-            self.assertIn("MMC direction error", (folder / "plot.html").read_text())
+            self.assertIn("MMC angle between measured and reference fields", (folder / "plot.html").read_text())
         self.assertIn("mmc_error_deg", header)
         self.assertGreater(r["turned_samples"], 30)
         self.assertGreater(r["still_s"], 2.0)
@@ -368,8 +368,8 @@ class Scoring(unittest.TestCase):
         self.assertGreater(r["icm"]["rate"], 90)
         self.assertGreater(r["mmc"]["rate"], 50)
         self.assertLess(r["mmc"]["direction"][0], 2.0)
-        self.assertIn("Direction error, typical", text)
-        self.assertIn("Software calibration: ICM on, MMC on", text)
+        self.assertIn("Angle between measured and reference fields: median", text)
+        self.assertIn("Magnetometer midpoint and scale corrections: ICM on, MMC on", text)
 
     def test_a_log_without_the_mmc_is_refused_plainly(self):
         with tempfile.TemporaryDirectory() as d:
@@ -394,12 +394,22 @@ class Scoring(unittest.TestCase):
         rows = [{"t_s": str(i * .01), "gx_dps": "20", "gy_dps": "0", "gz_dps": "0"} for i in range(300)]
         self.assertEqual(still_stretches(rows), [])
 
+    def test_noise_combines_all_axes_instead_of_averaging_them(self):
+        # Three distinct time windows; sample standard deviations are 1, 2, 3.
+        rows = [{"t_s": str(i * NOISE_WINDOW_S), "x": str(v),
+                 "y": str(2 * v), "z": str(3 * v)}
+                for i, v in enumerate((-1, 0, 1))]
+        self.assertAlmostEqual(noise_ut([rows], ("x",)), 1.0)
+        self.assertAlmostEqual(noise_ut([rows], ("y",)), 2.0)
+        self.assertAlmostEqual(noise_ut([rows], ("z",)), 3.0)
+        self.assertAlmostEqual(noise_ut([rows], ("x", "y", "z")), math.sqrt(14))
+
     def test_verdicts(self):
         r = {"icm": {"direction": (2.0, 3, 4)}, "mmc": {"direction": (1.0, 2, 3)}}
-        self.assertIn("MMC5983MA tracks", verdict(r))
+        self.assertIn("MMC5983MA has the smaller median angle", verdict(r))
         r["mmc"]["direction"] = (4.0, 5, 6)
-        self.assertIn("ICM-20948 tracks", verdict(r))
+        self.assertIn("ICM-20948 has the smaller median angle", verdict(r))
         r["mmc"]["direction"] = (2.1, 5, 6)
-        self.assertIn("Too close", verdict(r))
+        self.assertIn("No clear ranking", verdict(r))
         r["mmc"]["direction"] = None
-        self.assertIn("No verdict", verdict(r))
+        self.assertIn("No comparison is available", verdict(r))

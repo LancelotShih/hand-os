@@ -7,18 +7,21 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from unittest.mock import Mock, patch
 
+from magtrack_src.config import I2C_RETRY_DELAY_S
 from magtrack_src.recording.data_log import DataLog
 from magtrack_src.web.feed import Feed
 from magtrack_src.tracking.pair import Pair
 from magtrack_src.hardware.icm_loop import sensor_loop
-from magtrack_src.web.server import PAGE_FILES, make_server
-from magtrack_src.tracking.tracker import Tracker
+from magtrack_src.hardware.mmc_loop import MmcReader
+from magtrack_src.web.server import Handler, PAGE_FILES, make_server
+from tests.sim.sim_board import diagnostic_tracker
 
 
 class Server(unittest.TestCase):
     def setUp(self):
-        self.tracker, self.feed = Tracker(), Feed()
+        self.tracker, self.feed = diagnostic_tracker(), Feed()
         self.dir = tempfile.TemporaryDirectory()
         self.log = DataLog(self.dir.name)
         self.server = make_server("127.0.0.1", 0, Pair(self.tracker), self.feed, self.log)
@@ -88,6 +91,7 @@ class Server(unittest.TestCase):
     def test_state(self):
         state = json.loads(self.get("/state"))
         self.assertEqual(state["capturing"], "earth")
+        self.assertIn("orientation_quat", state)
         self.assertEqual(state["pass_ut"], 5.0)
 
     def test_zero_is_gone(self):
@@ -125,6 +129,17 @@ class Server(unittest.TestCase):
             self.assertTrue(self.get(f"/logs/{name}/{filename}"))
         self.assertIn("offset", json.loads(self.get(f"/logs/{name}/info.json")))
 
+    def test_recording_start_disk_failure_returns_json_and_can_be_retried(self):
+        with patch.object(self.log, "_new_folder", side_effect=PermissionError("disk denied")):
+            result = self.post("/log/start")
+        self.assertFalse(result["ok"])
+        self.assertIn("disk denied", result["error"])
+        status = json.loads(self.get("/state"))["log"]
+        self.assertFalse(status["active"])
+        self.assertIn("Recording could not start", status["error"])
+        self.assertTrue(self.post("/log/start")["ok"])
+        self.assertTrue(self.post("/log/stop")["ok"])
+
     def test_only_log_files_are_served(self):
         self.post("/log/start")
         name = json.loads(self.get("/state"))["log"]["name"]
@@ -142,6 +157,34 @@ class Server(unittest.TestCase):
         while b'"r": 1.5' not in data or b"event: status" not in data:
             data += s.recv(4096)
         s.close()
+
+
+class StreamDisconnects(unittest.TestCase):
+    def handler(self):
+        handler = Handler.__new__(Handler)
+        handler.send_response = Mock()
+        handler.send_header = Mock()
+        handler.end_headers = Mock()
+        handler._state = Mock(return_value={})
+        handler.server = Mock()
+        handler.server.feed.since.return_value = []
+        handler.wfile = Mock()
+        return handler
+
+    def test_connection_disconnects_are_handled_during_headers_and_body(self):
+        for exception in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            for phase in ("headers", "body"):
+                with self.subTest(exception=exception, phase=phase):
+                    handler = self.handler()
+                    operation = handler.end_headers if phase == "headers" else handler.wfile.write
+                    operation.side_effect = exception("client disconnected")
+                    handler._stream()
+
+    def test_unrelated_stream_errors_are_not_hidden(self):
+        handler = self.handler()
+        handler.wfile.write.side_effect = OSError("unexpected failure")
+        with self.assertRaisesRegex(OSError, "unexpected failure"):
+            handler._stream()
 
 
 class FakeIMU:
@@ -164,12 +207,25 @@ class FakeIMU:
         pass
 
 
+class StopAfterWait:
+    def __init__(self):
+        self.stopped = False
+        self.waits = []
+
+    def is_set(self):
+        return self.stopped
+
+    def wait(self, delay):
+        self.waits.append(delay)
+        self.stopped = True
+
+
 class Loop(unittest.TestCase):
     def test_reconnects_and_tells_the_tracker(self):
         stop = threading.Event()
         FakeIMU.stop = stop
         FakeIMU.opened = 0
-        tracker, feed = Tracker(), Feed()
+        tracker, feed = diagnostic_tracker(), Feed()
         with tempfile.TemporaryDirectory() as d:
             th = threading.Thread(target=sensor_loop,
                                   args=(1, 0x68, Pair(tracker), feed, DataLog(d), stop, FakeIMU))
@@ -179,3 +235,15 @@ class Loop(unittest.TestCase):
         self.assertTrue(feed.connected)
         self.assertEqual(FakeIMU.opened, 2)
         self.assertIn("reconnected", tracker.message)
+
+    def test_both_sensor_loops_retry_after_the_configured_delay(self):
+        for loop_name in ("icm", "mmc"):
+            with self.subTest(sensor=loop_name), patch("builtins.print"):
+                stop = StopAfterWait()
+                open_sensor = Mock(side_effect=OSError("bus error"))
+                if loop_name == "icm":
+                    sensor_loop(1, 0x68, Mock(), Feed(), None, stop, open_imu=open_sensor)
+                else:
+                    MmcReader(1, 0x30, open_mmc=open_sensor).run(stop)
+                self.assertEqual(stop.waits, [I2C_RETRY_DELAY_S])
+                self.assertEqual(stop.waits, [0.5])

@@ -9,7 +9,7 @@ let dragFrom = null;
 
 function setTips(on) {
   camera.tips = on;
-  $("tips").textContent = on ? "Show whole view" : "Zoom to tips";
+  $("tips").textContent = on ? "Show board and field arrows" : "Zoom to field arrow tips";
 }
 
 function resetView() {
@@ -53,7 +53,7 @@ function cam(p, c = camera) {
   return [x, y*Math.sin(e) + p[2]*Math.cos(e), y*Math.cos(e) - p[2]*Math.sin(e)];
 }
 
-function drawView(canvas, sample) {
+function drawView(canvas, sample, orientationQuat) {
   const [g, w, h] = fit(canvas);
   const toScene = vec => vec.map(c => c * ARROW_PER_UT);
   const focus = camera.tips && sample && sample.predicted ? cam(toScene(sample.predicted)) : [0, 0];
@@ -71,7 +71,7 @@ function drawView(canvas, sample) {
     g.fillStyle = css("--dim"); g.font = "12px system-ui"; g.fillText(n, e[0]+4, e[1]+4);
   });
 
-  const q = sample ? sample.quat : [1,0,0,0];
+  const q = orientationQuat || (sample ? sample.quat : [1,0,0,0]);
   const hx = 1.3, hy = .8, hz = .08;
   const v = [[-hx,-hy,-hz],[hx,-hy,-hz],[hx,hy,-hz],[-hx,hy,-hz],
              [-hx,-hy,hz],[hx,-hy,hz],[hx,hy,hz],[-hx,hy,hz]].map(p => px(rot(q, p)));

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cancel Earth's field at every angle from one measurement, and track the
+"""Subtract a captured reference field at every angle, and track the
 ICM-20948 around the coil.  With --mmc, an MMC5983MA runs beside it doing the
 same job, so the two magnetometers can be compared.
 
@@ -7,11 +7,11 @@ Run with the system python3 (it has smbus2):
   ./earth_cancel.py                # open http://<this-pi's-ip>:8000
   ./earth_cancel.py --mmc          # with the MMC5983MA as well
 
-First run: rest the board for a second, click "Tumble", follow the steps.
-Position: start with the board on its home mark and the coil on, then add
-calibration points on the page.
+Start with the electromagnet OFF. Calibrate the magnetometers if needed,
+then measure the ambient field. Switch the coil on and confirm it in the page.
+Position uses absolute coil fields and a model-generated lookup table.
 After a log made with --mmc: python3 -m magtrack_src.recording.compare data/logs/<name>
-See README.md for how it works and where everything lives.
+See docs/architecture.md for setup, operation, and how it works.
 """
 
 import argparse
@@ -51,8 +51,10 @@ def main(argv=None):
     store = CalibrationFile(config.CALIBRATION_FILE, config.TUMBLE_LOG_FILE)
     offset, bias, gains = store.load()
     locator = Locator(config.COIL_FILE)
-    tracker = Pair(Tracker(offset, bias, store, gains, use_calibration=config.ICM_USE_CALIBRATION),
+    tracker = Pair(Tracker(offset, bias, store, gains, use_calibration=config.ICM_USE_CALIBRATION,
+                           require_coil_off=True, map_frame=locator.frame),
                    locator=locator)
+    tracker.icm.message = store.load_error
     if args.mmc:
         mmc_store = CalibrationFile(config.MMC_CALIBRATION_FILE, config.MMC_TUMBLE_LOG_FILE,
                                     config.MMC_MOUNTING_FILE)
@@ -60,8 +62,10 @@ def main(argv=None):
         tracker = Pair(tracker.icm,
                        Tracker(mmc_offset, bias, mmc_store, mmc_gains, axes=mmc_store.load_axes(),
                                fit_mounting=True, block_samples=config.MMC_BLOCK_SAMPLES,
-                               use_calibration=config.MMC_USE_CALIBRATION),
+                               use_calibration=config.MMC_USE_CALIBRATION, require_coil_off=True),
                        MmcReader(args.bus, args.mmc_address), locator)
+        tracker.mmc.message = " ".join(message for message in
+                                      (mmc_store.load_error, mmc_store.mounting_load_error) if message) or None
     feed = Feed()
     log = DataLog(config.LOG_DIR)
     stop = threading.Event()
@@ -78,8 +82,8 @@ def main(argv=None):
         mmc_th.start()
 
     ip = local_ip() if args.host in ("0.0.0.0", "::") else args.host
-    print(f"Earth cancel:  http://{ip}:{args.port}   (Ctrl+C to stop)")
-    print("rest the board for a second if you can: that measures the gyro bias")
+    print(f"Magnetic field and position tracking:  http://{ip}:{args.port}   (Ctrl+C to stop)")
+    print("Switch the electromagnet OFF. Rest the board, then click Measure ambient field with coil off.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

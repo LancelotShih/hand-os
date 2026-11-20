@@ -9,24 +9,16 @@ To redraw a log:  python3 -m magtrack_src.recording.log_plot data/logs/<name>
 Used by: recording/data_log.py, recording/compare.py.  Uses: config.
 """
 
-import csv
 import html
 import json
+import math
 import sys
 from pathlib import Path
 
 from magtrack_src.config import PASS_MIN_TURN_DEG, PASS_UT
 
-SAMPLE_COLUMNS = ["t_s", "qw", "qx", "qy", "qz", "yaw_deg", "pitch_deg", "roll_deg", "turn_deg",
-                  "measured_x_ut", "measured_y_ut", "measured_z_ut",
-                  "predicted_x_ut", "predicted_y_ut", "predicted_z_ut",
-                  "error_x_ut", "error_y_ut", "error_z_ut", "error_ut",
-                  "error_deg",
-                  "mmc_measured_x_ut", "mmc_measured_y_ut", "mmc_measured_z_ut",
-                  "mmc_predicted_x_ut", "mmc_predicted_y_ut", "mmc_predicted_z_ut",
-                  "mmc_error_x_ut", "mmc_error_y_ut", "mmc_error_z_ut",
-                  "mmc_error_ut", "mmc_error_deg", "calibration_on", "mmc_calibration_on",
-                  "pos_x_cm", "pos_y_cm", "pos_z_cm"]
+# Compatibility exports: existing callers may still import these here.
+from magtrack_src.recording.schema import SAMPLE_COLUMNS, read_samples
 
 MAX_BUCKETS = 1500        # thinning: at most two points per bucket
 MAX_GAP_S = 1.0           # a longer gap in the data breaks the line
@@ -35,17 +27,7 @@ POSITION_TOPS = (5, 10, 15, 20, 30, 50)   # cm
 
 WIDTH, LEFT, RIGHT = 900, 52, 14
 PLOT_H, HEADER_H, AXIS_H = 96, 26, 24
-
-
-def read_samples(folder):
-    """Each column of samples.csv as a list, ``None`` where it's blank."""
-    columns = {name: [] for name in SAMPLE_COLUMNS}
-    with open(Path(folder) / "samples.csv", newline="") as f:
-        for row in csv.DictReader(f):
-            for name in SAMPLE_COLUMNS:
-                value = row.get(name) or row.get(name.replace("error", "residual"))  # older logs
-                columns[name].append(float(value) if value else None)
-    return columns
+MAX_TRAJECTORY_SAMPLES = 12000
 
 
 def thin(ts, vs, buckets=MAX_BUCKETS):
@@ -133,21 +115,64 @@ def _traces(c):
     if has_mmc(c):                  # every plot in a pair shares one scale
         deg = nice_top(max((v for _, p in sides for v in c[p + "error_deg"] if v is not None),
                            default=0.0))
-        traces += [(f"{label}direction error", "°", thin(ts, c[p + "error_deg"]), 0.0, deg, ())
+        traces += [(f"{label}angle between measured and reference fields", "°", thin(ts, c[p + "error_deg"]), 0.0, deg, ())
                    for label, p in sides]
-    traces += [(f"{label}|error|", "µT", thin(ts, c[p + "error_ut"]), 0.0, top, (PASS_UT,))
+    traces += [(f"{label}field difference from the reference", "µT", thin(ts, c[p + "error_ut"]), 0.0, top, (PASS_UT,))
                for label, p in sides]
     for axis in "xyz":
-        traces += [(f"{label}error {axis}" if label else f"Error {axis}", "µT",
+        traces += [(f"{label}field difference along {axis}", "µT",
                     thin(ts, c[f"{p}error_{axis}_ut"]), -top, top, ()) for label, p in sides]
-    traces.append(("Turned from capture", "°", thin(ts, c["turn_deg"]), 0.0, 180.0,
+    traces.append(("Board rotation since reference measurement", "°", thin(ts, c["turn_deg"]), 0.0, 180.0,
                    (PASS_MIN_TURN_DEG,)))
     if any(v is not None for v in c.get("pos_x_cm", ())):
         far = max(abs(v) for k in ("pos_x_cm", "pos_y_cm", "pos_z_cm") for v in c[k] if v is not None)
         span = next((top for top in POSITION_TOPS if top >= far), far)
-        traces += [(f"Position {axis}, from the coil", "cm", thin(ts, c[f"pos_{axis}_cm"]), -span, span, ())
+        traces += [(f"Estimated position along {axis}, from the entered coil center", "cm", thin(ts, c[f"pos_{axis}_cm"]), -span, span, ())
                    for axis in "xyz"]
     return traces
+
+
+def trajectory_data(c):
+    """Time-ordered estimated poses for the interactive replay; missing fixes stay as gaps."""
+    times = c["t_s"]
+    stride = max(1, math.ceil(len(times) / MAX_TRAJECTORY_SAMPLES))
+    indices = list(range(0, len(times), stride))
+    if indices and indices[-1] != len(times) - 1:
+        indices.append(len(times) - 1)
+
+    def position_is_valid(i):
+        return all(
+            c[key][i] is not None and math.isfinite(c[key][i])
+            for key in ("pos_x_cm", "pos_y_cm", "pos_z_cm")
+        )
+
+    def has_gap(start, end):
+        return any(
+            (not position_is_valid(i - 1) or times[i] - times[i - 1] > MAX_GAP_S)
+            for i in range(start + 1, end + 1)
+        )
+
+    def vector(keys, i):
+        values = [c[key][i] for key in keys]
+        if any(value is None or not math.isfinite(value) for value in values):
+            return None
+        return [round(value, 5) for value in values]
+
+    def flag(name, i):
+        values = c.get(name, ())
+        return bool(values[i]) if i < len(values) and values[i] is not None else False
+
+    poses = []
+    previous = 0
+    for i in indices:
+        poses.append({"t": round(times[i], 3),
+                      "p": vector(("pos_x_cm", "pos_y_cm", "pos_z_cm"), i),
+                      "q": vector(("qw", "qx", "qy", "qz"), i),
+                      "history": flag("position_history_based", i),
+                      "ambiguous": flag("position_ambiguous", i),
+                      "break": bool(poses) and has_gap(previous, i)})
+        previous = i
+    return poses
 
 
 def _tile(label, value):
@@ -164,23 +189,25 @@ def render(name, c):
                  HEADER_H + i * (PLOT_H + HEADER_H), i == rows - 1)
            for i, (title, unit, points, low, high, target) in enumerate(traces)]
     fmt = lambda v, u: "–" if v is None else f"{v:.1f} {u}"
-    tiles = "".join((_tile("Length", f'{stats["seconds"]:.1f} s'),
-                     _tile("Samples", f'{stats["samples"]:,}')))
+    tiles = "".join((_tile("Recording duration", f'{stats["seconds"]:.1f} s'),
+                     _tile("Recorded view samples", f'{stats["samples"]:,}')))
     for label, prefix in (("ICM ", ""), ("MMC ", "mmc_")) if has_mmc(c) else (("", ""),):
         side = summarize(c, prefix)
         tiles += "".join((
-            _tile(f"{label}mean error", fmt(side["mean"], "µT")),
-            _tile(f"{label}worst error", fmt(side["worst"], "µT")),
-            _tile(f"{label}under {PASS_UT:g} µT once turned {PASS_MIN_TURN_DEG:g}°+",
+            _tile(f"{label}mean field difference from the reference", fmt(side["mean"], "µT")),
+            _tile(f"{label}largest field difference from the reference", fmt(side["worst"], "µT")),
+            _tile(f"{label}samples below {PASS_UT:g} µT, after at least {PASS_MIN_TURN_DEG:g}° board rotation",
                   fmt(side["under"], "%"))))
     data = json.dumps([{"name": f"{t[0]} ({t[1]})", "points": [[round(p[0], 3), round(p[1], 2)] for p in t[2]]}
                        for t in traces], separators=(",", ":"))
+    trajectory = json.dumps(trajectory_data(c), separators=(",", ":"))
     return (PAGE.replace("{{NAME}}", html.escape(name))
                 .replace("{{TILES}}", tiles)
                 .replace("{{HEIGHT}}", str(height))
                 .replace("{{WIDTH}}", str(WIDTH))
                 .replace("{{SVG}}", "\n".join(svg))
                 .replace("{{DATA}}", data)
+                .replace("{{TRAJECTORY}}", trajectory)
                 .replace("{{SCALE}}", json.dumps({"left": LEFT, "width": WIDTH - LEFT - RIGHT,
                                                   "end": end})))
 
@@ -195,7 +222,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Earth Cancel Log</title>
+<title>Magnetic field tracking recording</title>
 <style>
 :root { --bg:#f6f6f4; --card:#fff; --ink:#1d1f21; --dim:#6b7075; --line:#e2e2de; --trace:#2f6fde; }
 @media (prefers-color-scheme: dark) {
@@ -215,6 +242,11 @@ svg { display:block; width:100%; height:auto; }
 .grid { stroke:var(--line); stroke-width:1; }
 .target { stroke:var(--dim); stroke-width:1; stroke-dasharray:4 4; }
 .trace { fill:none; stroke:var(--trace); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+.trajectory-controls { display:flex; align-items:center; gap:10px; margin:8px 0; }
+.trajectory-controls input { flex:1; min-width:80px; }
+#trajectory { display:block; width:100%; aspect-ratio:4/3; touch-action:none; cursor:grab; }
+#trajectory:active { cursor:grabbing; }
+[hidden] { display:none !important; }
 #cross { stroke:var(--dim); stroke-width:1; visibility:hidden; }
 #tip { position:absolute; display:none; pointer-events:none; background:var(--card); border:1px solid var(--line);
        border-radius:6px; padding:6px 9px; font-size:13px; white-space:nowrap; font-variant-numeric:tabular-nums; }
@@ -225,18 +257,36 @@ a { color:var(--trace); }
 <body>
 <main>
   <h1>{{NAME}}</h1>
+  <p>The field-difference plots show measured magnetic field minus captured reference field.
+  Their overall size combines all three components; it is not just a difference in strengths.
+  With the coil on, sensor movement is expected to change this reading.
+  Board rotation is the change in board orientation since the reference measurement;
+  the angle between fields compares the magnetic readings themselves.
+  Dashed lines use the current comparison thresholds.</p>
   <div class="tiles">{{TILES}}</div>
+  <div class="card" id="trajectory-card" hidden>
+    <h2>Estimated 3D movement</h2>
+    <p>The line traces recorded position estimates; the green square shows the recorded board orientation at the selected time.
+    Red dashed sections were marked ambiguous and selected using the previous estimate. Gaps are left unconnected.</p>
+    <div class="trajectory-controls">
+      <button id="trajectory-play" type="button">Play</button>
+      <input id="trajectory-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Trajectory playback time">
+      <output id="trajectory-time"></output>
+    </div>
+    <canvas id="trajectory" aria-label="Interactive 3D estimated position trajectory"></canvas>
+    <p class="label">Drag to rotate; scroll to zoom. Coordinates and orientation are recorded estimates, not independent ground truth.</p>
+  </div>
   <div class="card" id="plots">
-    <svg id="svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" role="img" aria-label="Error and turn angle over time">
+    <svg id="svg" viewBox="0 0 {{WIDTH}} {{HEIGHT}}" role="img" aria-label="Differences from the magnetic reference field and board rotation over time">
 {{SVG}}
 <line id="cross" y1="0" y2="{{HEIGHT}}"/>
     </svg>
     <div id="tip"></div>
   </div>
-  <div>Raw data: <a href="samples.csv">samples.csv</a> &middot; <a href="raw.csv">raw.csv</a> &middot; <a href="info.json">info.json</a></div>
+  <div>Recording files: <a href="samples.csv">Displayed estimates (samples.csv)</a> &middot; <a href="raw.csv">Sensor readings (raw.csv)</a> &middot; <a href="info.json">Starting state (info.json)</a></div>
 </main>
 <script>
-const traces = {{DATA}}, scale = {{SCALE}};
+const traces = {{DATA}}, scale = {{SCALE}}, trajectory = {{TRAJECTORY}};
 const svg = document.getElementById("svg"), cross = document.getElementById("cross"),
       tip = document.getElementById("tip"), box = document.getElementById("plots");
 
@@ -269,6 +319,179 @@ svg.addEventListener("pointermove", e => {
   tip.style.top = (e.clientY - b.top + 14) + "px";
 });
 svg.addEventListener("pointerleave", () => { cross.style.visibility = "hidden"; tip.style.display = "none"; });
+
+const trajectoryCard = document.getElementById("trajectory-card");
+const trajectoryCanvas = document.getElementById("trajectory");
+const trajectorySlider = document.getElementById("trajectory-slider");
+const trajectoryPlay = document.getElementById("trajectory-play");
+const trajectoryTime = document.getElementById("trajectory-time");
+const validTrajectory = trajectory.some(row => row.p);
+if (validTrajectory) {
+  trajectoryCard.hidden = false;
+  trajectorySlider.max = trajectory.length - 1;
+  let trajectoryIndex = 0, trajectoryYaw = -35, trajectoryPitch = 25, trajectoryZoom = 1;
+  let trajectoryDrag = null, trajectoryPlaying = false, playStartClock = 0, playStartTime = 0;
+  let trajectoryExtent = 5;
+  for (const row of trajectory) if (row.p) {
+    trajectoryExtent = Math.max(trajectoryExtent, Math.hypot(...row.p));
+  }
+  trajectoryExtent = Math.ceil(trajectoryExtent / 5) * 5;
+
+  function project(p, width, height, unit) {
+    const yaw = trajectoryYaw * Math.PI / 180, pitch = trajectoryPitch * Math.PI / 180;
+    const x = p[0] * Math.cos(yaw) - p[1] * Math.sin(yaw);
+    const y = p[0] * Math.sin(yaw) + p[1] * Math.cos(yaw);
+    return [width / 2 + x * unit,
+            height / 2 - (y * Math.cos(pitch) - p[2] * Math.sin(pitch)) * unit];
+  }
+
+  function rotateByQuaternion(q, v) {
+    if (!q) return v;
+    const norm = Math.hypot(...q);
+    if (!norm) return v;
+    const [w, x, y, z] = q.map(value => value / norm);
+    return [
+      (1 - 2 * (y*y + z*z)) * v[0] + 2 * (x*y - z*w) * v[1] + 2 * (x*z + y*w) * v[2],
+      2 * (x*y + z*w) * v[0] + (1 - 2 * (x*x + z*z)) * v[1] + 2 * (y*z - x*w) * v[2],
+      2 * (x*z - y*w) * v[0] + 2 * (y*z + x*w) * v[1] + (1 - 2 * (x*x + y*y)) * v[2]
+    ];
+  }
+
+  function drawTrajectory() {
+    const bounds = trajectoryCanvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const width = bounds.width, height = bounds.height;
+    trajectoryCanvas.width = Math.round(width * dpr);
+    trajectoryCanvas.height = Math.round(height * dpr);
+    const ctx = trajectoryCanvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const unit = Math.min(width, height) / (2 * trajectoryExtent * 1.3) * trajectoryZoom;
+    const at = p => project(p, width, height, unit);
+    const strokeLine = (a, b, color, alpha, lineWidth, dash) => {
+      const start = at(a), end = at(b);
+      ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = lineWidth;
+      ctx.setLineDash(dash || []);
+      ctx.beginPath(); ctx.moveTo(start[0], start[1]); ctx.lineTo(end[0], end[1]); ctx.stroke();
+    };
+    for (let v = -trajectoryExtent; v <= trajectoryExtent; v += 5) {
+      const zero = v === 0;
+      strokeLine([v, -trajectoryExtent, 0], [v, trajectoryExtent, 0],
+                 zero ? "#6b7075" : "#b9bdc1", zero ? 0.8 : 0.5, zero ? 1.5 : 1);
+      strokeLine([-trajectoryExtent, v, 0], [trajectoryExtent, v, 0],
+                 zero ? "#6b7075" : "#b9bdc1", zero ? 0.8 : 0.5, zero ? 1.5 : 1);
+      const xTick = at([v, -trajectoryExtent, 0]), yTick = at([-trajectoryExtent, v, 0]);
+      ctx.globalAlpha = 0.9; ctx.fillStyle = "#6b7075"; ctx.font = "11px system-ui";
+      ctx.fillText(String(v), xTick[0] + 3, xTick[1] - 3);
+      if (v !== -trajectoryExtent) ctx.fillText(String(v), yTick[0] + 3, yTick[1] - 3);
+    }
+    strokeLine([0, 0, 0], [trajectoryExtent, 0, 0], "#6b7075", 0.9, 1.5);
+    strokeLine([0, 0, 0], [0, trajectoryExtent, 0], "#6b7075", 0.9, 1.5);
+    strokeLine([0, 0, 0], [0, 0, trajectoryExtent], "#6b7075", 0.9, 1.5);
+    ctx.globalAlpha = 0.9; ctx.fillStyle = "#6b7075"; ctx.font = "12px system-ui";
+    for (const [p, text] of [[[trajectoryExtent, 0, 0], "x (cm)"],
+                             [[0, trajectoryExtent, 0], "y (cm)"],
+                             [[0, 0, trajectoryExtent], "z (cm)"]]) {
+      const point = at(p); ctx.fillText(text, point[0] + 4, point[1] - 4);
+    }
+
+    function drawPath(maxIndex, alpha) {
+      let points = [], last = null, ambiguous = null;
+      const flush = () => {
+        if (points.length > 1) {
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = ambiguous ? "#c62f2f" : "#2f6fde";
+          ctx.lineWidth = 2; ctx.setLineDash(ambiguous ? [5, 4] : []);
+          ctx.beginPath(); points.forEach((point, i) => i
+            ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1]));
+          ctx.stroke();
+        }
+        points = []; ambiguous = null;
+      };
+      for (let i = 0; i <= maxIndex; i++) {
+        const row = trajectory[i];
+        if (!row.p) { flush(); last = null; continue; }
+        if (last && row.break) { flush(); last = null; }
+        if (last) {
+          const uncertain = !!(row.ambiguous || last.ambiguous);
+          if (ambiguous !== null && uncertain !== ambiguous) flush();
+          if (!points.length) points.push(at(last.p));
+          points.push(at(row.p)); ambiguous = uncertain;
+        }
+        last = row;
+      }
+      flush();
+    }
+    drawPath(trajectory.length - 1, 0.2);
+    drawPath(trajectoryIndex, 0.95);
+
+    const current = trajectory[trajectoryIndex];
+    if (current.p) {
+      const corners = [[-0.6, -0.6, 0], [0.6, -0.6, 0], [0.6, 0.6, 0], [-0.6, 0.6, 0]]
+        .map(offset => at(current.p.map((v, k) => v + rotateByQuaternion(current.q, offset)[k])));
+      ctx.globalAlpha = 1; ctx.fillStyle = "#3d7f6e"; ctx.strokeStyle = "#1d1f21"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); corners.forEach((point, i) => i
+        ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1]));
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      const nose = at(current.p.map((v, k) => v + rotateByQuaternion(current.q, [0.6, 0, 0])[k]));
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(nose[0], nose[1], 2, 0, Math.PI * 2); ctx.fill();
+      if (current.ambiguous) {
+        const center = at(current.p);
+        ctx.strokeStyle = "#c62f2f"; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.arc(center[0], center[1], 10, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1; ctx.setLineDash([]);
+    trajectoryTime.textContent = current.t.toFixed(2) + " s"
+      + (current.p ? current.ambiguous ? " · ambiguous" : "" : " · no position estimate");
+  }
+
+  function selectTrajectoryIndex(index) {
+    trajectoryIndex = Math.max(0, Math.min(trajectory.length - 1, index));
+    trajectorySlider.value = trajectoryIndex;
+    drawTrajectory();
+  }
+  trajectorySlider.addEventListener("input", () => {
+    trajectoryPlaying = false; trajectoryPlay.textContent = "Play";
+    selectTrajectoryIndex(Number(trajectorySlider.value));
+  });
+  trajectoryPlay.addEventListener("click", () => {
+    if (trajectoryPlaying) {
+      trajectoryPlaying = false; trajectoryPlay.textContent = "Play"; return;
+    }
+    if (trajectoryIndex === trajectory.length - 1) selectTrajectoryIndex(0);
+    trajectoryPlaying = true; trajectoryPlay.textContent = "Pause";
+    playStartClock = performance.now(); playStartTime = trajectory[trajectoryIndex].t;
+    requestAnimationFrame(advanceTrajectory);
+  });
+  function advanceTrajectory(now) {
+    if (!trajectoryPlaying) return;
+    const targetTime = playStartTime + (now - playStartClock) / 1000;
+    let next = trajectoryIndex;
+    while (next + 1 < trajectory.length && trajectory[next + 1].t <= targetTime) next++;
+    if (next !== trajectoryIndex) selectTrajectoryIndex(next);
+    if (trajectoryIndex === trajectory.length - 1) {
+      trajectoryPlaying = false; trajectoryPlay.textContent = "Play"; return;
+    }
+    requestAnimationFrame(advanceTrajectory);
+  }
+  trajectoryCanvas.addEventListener("pointerdown", e => {
+    trajectoryDrag = [e.clientX, e.clientY]; trajectoryCanvas.setPointerCapture(e.pointerId);
+  });
+  trajectoryCanvas.addEventListener("pointermove", e => {
+    if (!trajectoryDrag) return;
+    trajectoryYaw += (e.clientX - trajectoryDrag[0]) * 0.5;
+    trajectoryPitch = Math.max(-89, Math.min(89, trajectoryPitch + (e.clientY - trajectoryDrag[1]) * 0.5));
+    trajectoryDrag = [e.clientX, e.clientY]; drawTrajectory();
+  });
+  trajectoryCanvas.addEventListener("pointerup", () => { trajectoryDrag = null; });
+  trajectoryCanvas.addEventListener("pointercancel", () => { trajectoryDrag = null; });
+  trajectoryCanvas.addEventListener("wheel", e => {
+    e.preventDefault(); trajectoryZoom = Math.max(0.4, Math.min(6, trajectoryZoom * Math.exp(-e.deltaY * 0.001)));
+    drawTrajectory();
+  }, {passive: false});
+  window.addEventListener("resize", drawTrajectory);
+  selectTrajectoryIndex(0);
+}
 </script>
 </body>
 </html>

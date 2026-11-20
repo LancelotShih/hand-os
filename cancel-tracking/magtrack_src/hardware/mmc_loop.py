@@ -1,7 +1,8 @@
 """Reads the MMC5983MA forever on its own thread, reconnecting if it drops out.
 
 Its own thread because a reading takes milliseconds of waiting, and the IMU loop
-must not wait with it.  The kernel keeps the two threads' bus traffic apart.
+must not wait with it. The kernel serializes bus transactions; the threads still
+share bandwidth. A single latest-unread slot can overwrite unconsumed readings.
 
 Used by: earth_cancel.py, tracking/pair.py (take).  Uses: hardware/mmc5983.py.
 """
@@ -9,6 +10,7 @@ Used by: earth_cancel.py, tracking/pair.py (take).  Uses: hardware/mmc5983.py.
 import sys
 import threading
 
+from magtrack_src.config import I2C_RETRY_DELAY_S
 from magtrack_src.hardware.mmc5983 import MMC
 
 
@@ -39,8 +41,8 @@ class MmcReader:
                         self._fresh = reading
             except OSError as e:
                 self.connected, self.error = False, str(e)
-                print(f"MMC5983MA error ({e}); retrying in 2 s...", file=sys.stderr)
-                stop.wait(2.0)
+                print(f"MMC5983MA error ({e}); retrying in {I2C_RETRY_DELAY_S:g} s...", file=sys.stderr)
+                stop.wait(I2C_RETRY_DELAY_S)
             finally:
                 if mmc is not None:
                     mmc.close()

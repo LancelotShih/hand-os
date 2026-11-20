@@ -8,6 +8,7 @@ Used by: earth_cancel.py.  Uses: hardware/icm20948.py; calls the tracker (a Pair
 import sys
 import time
 
+from magtrack_src.config import I2C_RETRY_DELAY_S
 from magtrack_src.hardware.icm20948 import IMU
 
 
@@ -31,8 +32,8 @@ def sensor_loop(bus, address, tracker, feed, log, stop, open_imu=IMU):
                     feed.push(sample)
         except OSError as e:
             feed.connected, feed.error = False, str(e)
-            print(f"IMU error ({e}); retrying in 2 s...", file=sys.stderr)
-            stop.wait(2.0)
+            print(f"IMU error ({e}); retrying in {I2C_RETRY_DELAY_S:g} s...", file=sys.stderr)
+            stop.wait(I2C_RETRY_DELAY_S)
         finally:
             if imu is not None:
                 imu.close()

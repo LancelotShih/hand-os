@@ -10,7 +10,7 @@ from magtrack_src.geometry.vectors import quat_norm
 
 
 def madgwick_step(q, gx, gy, gz, ax, ay, az, dt, beta=AHRS_BETA):
-    """One 6-DOF Madgwick update.  Gyro in rad/s, accel in any unit."""
+    """One orientation update using three gyro and three accelerometer axes.  Gyro in rad/s, accel in any unit."""
     q0, q1, q2, q3 = q
     qDot1 = 0.5 * (-q1 * gx - q2 * gy - q3 * gz)
     qDot2 = 0.5 * (q0 * gx + q2 * gz - q3 * gy)

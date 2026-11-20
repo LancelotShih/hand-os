@@ -1,20 +1,56 @@
 // Live data from the server, the readouts and the buttons.  Every sensor readout
 // goes through the same functions, once per side.
 let latest = null, state = null;
+let recordingRequestError = null;
 const HIST_S = 20;
 
-function post(path) { fetch(path, {method:"POST"}); }
-$("capture").onclick = () => post("/capture");
+async function post(path, body = {}) {
+  try {
+    const response = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Request failed");
+    $("requeststatus").textContent = ""; return true;
+  } catch (error) { $("requeststatus").textContent = error.message; return false; }
+}
+$("capture").onclick = () => {
+  if (confirm("Switch the electromagnet OFF and hold still. Is the coil off now?")) post("/ambient/capture", {coil_off: true});
+};
+$("coilon").onclick = () => {
+  const on = !(state && state.coil_on);
+  const prompt = on
+    ? "Switch the electromagnet ON manually, then confirm to start tracking."
+    : "Switch the electromagnet OFF manually, then confirm to pause tracking.";
+  if (confirm(prompt)) post("/coil/power", {on});
+};
+$("newmap").onclick = () => {
+  if (confirm("Delete the coil measurements/model and start new map directions? Sensor corrections and recordings are kept. Measure the coil-off ambient field afterward.")) post("/map/new");
+};
+$("dismissreconnect").onclick = () => post("/warnings/reconnect/dismiss");
 $("tumble").onclick = () => post("/tumble/start");
 $("tumblefinish").onclick = () => post("/tumble/finish");
 $("tumblecancel").onclick = () => post("/tumble/cancel");
 $("reset").onclick = () => {
-  if (confirm("Erase all calibration and start over? Recorded logs and the MMC's mounting are kept.")) {
+  if (confirm("Clear the magnetometers' midpoint and scale corrections and the gyroscope zero-rate estimate? Recordings and MMC mounting are kept. Tracking will require new sensor calibration and a new map.")) {
     post("/calibration/reset");
   }
 };
 SIDES.forEach(side => { side.part("usecal").onchange = () => post("/calibration/" + side.key + "/toggle"); });
-$("log").onclick = () => post(state && state.log.active ? "/log/stop" : "/log/start");
+$("log").onclick = async () => {
+  const button = $("log");
+  button.disabled = true;
+  try {
+    const response = await fetch(state && state.log.active ? "/log/stop" : "/log/start", {method:"POST"});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "The server rejected the recording request.");
+    recordingRequestError = null;
+  } catch (error) {
+    recordingRequestError = "Recording request failed: " + error.message;
+  } finally {
+    button.disabled = false;
+    if (state) showLog(state.log);
+    else $("logstat").textContent = recordingRequestError || "";
+  }
+};
 
 // The server sends the ICM at the top level and the MMC, in the same shape, inside it.
 const sampleOf = side => side.key === "icm" ? latest : latest && latest.mmc;
@@ -28,11 +64,11 @@ function showSample(side) {
   put("mm", s ? s.measured_mag.toFixed(1) + " µT" : "–");
   if (!s || s.error_ut === null) {
     big.textContent = "–";
-    verdict.textContent = s ? "no Earth reference yet" : "no readings yet";
+    verdict.textContent = s ? "Waiting for sensor corrections or a reference field measurement." : "Waiting for sensor readings.";
     ["deg", "peakdeg", "peak", "pm"].forEach(name => put(name, "–"));
     return;
   }
-  big.textContent = s.error_deg.toFixed(1) + "° · " + s.error_ut.toFixed(1) + " µT";
+  big.textContent = s.error_ut.toFixed(1) + " µT";
   put("deg", s.error_deg.toFixed(1) + "°");
   put("peakdeg", s.peak_deg.toFixed(1) + "°");
   put("peak", s.peak.toFixed(1) + " µT");
@@ -41,19 +77,19 @@ function showSample(side) {
   const ok = s.error_ut < lim, mark = ok ? " good" : " bad";
   big.className += mark;
   verdict.className += mark;
-  verdict.textContent = !ok ? "over " + lim + " µT"
-    : s.turn < min ? "within " + lim + " µT, turn the board to test it"
-    : "within " + lim + " µT";
+  verdict.textContent = !ok ? "Field difference is at or above the " + lim + " µT comparison threshold."
+    : s.turn < min ? "Field difference is below " + lim + " µT. For a coil-off comparison, rotate the board at least " + min + "° from the reference orientation."
+    : "Field difference is below the " + lim + " µT comparison threshold.";
 }
 
 function sideStatus(s) {
-  if (!s) return "Switched off (start with --mmc to use it)";
+  if (!s) return "MMC sensor disabled. Start the application with --mmc to enable it.";
   if (!s.connected) return "Not connected" + (s.error ? ": " + s.error : "");
-  if (s.capturing === "earth") return "Measuring Earth's field…";
+  if (s.capturing === "earth") return "Measuring the reference field. Hold the board still.";
   if (s.message) return s.message;
-  if (!s.mounted) return "Mounting not measured: Tumble once, ever. Until then, errors while turning mean nothing.";
-  if (!s.calibration_on) return "No calibration: cancelling Earth from the gyro and the first reading.";
-  return s.have_offset ? "" : "Not calibrated yet: click Tumble.";
+  if (!s.mounted) return "Sensor mounting alignment is unknown. Click Calibrate magnetometers and rotate the board. Repeat after remounting the sensor.";
+  if (!s.calibration_on) return "Magnetometer midpoint and scale corrections are disabled. Mounting alignment and hardware correction remain in use.";
+  return s.have_offset ? "" : "Magnetometer corrections are unavailable. Click Calibrate magnetometers.";
 }
 
 function showSideState(side) {
@@ -84,10 +120,10 @@ function showTumble(side, s) {
   bar.className = "tumblebar" + (s.tumble_ready ? " ok" : "");
   const swept = s.tumble_swept.length, total = 26, needed = Math.ceil(need * total);
   side.part("tumbleinfo").textContent = s.tumble_counting
-    ? swept + " of " + total + " directions swept (need " + needed + "), " + s.tumble_points + " readings"
-    : "Keep turning, flip it over fully. Half the swing so far: X " + s.tumble_swing[0].toFixed(0) + ", Y "
-      + s.tumble_swing[1].toFixed(0) + ", Z " + s.tumble_swing[2].toFixed(0)
-      + " µT. Dots start counting once all three are about equal.";
+    ? "Field directions covered: " + swept + " of " + total + ". At least " + needed + " are required, along with enough magnetic readings. Readings collected: " + s.tumble_points + "."
+    : "Keep rotating the board, including turning it upside down. Half of the observed reading range: x " + s.tumble_swing[0].toFixed(0) + ", y "
+      + s.tumble_swing[1].toFixed(0) + ", z " + s.tumble_swing[2].toFixed(0)
+      + " µT. Field-direction counting starts once all three ranges are sufficiently wide and balanced.";
 }
 
 function showResult(side, r, applied) {
@@ -97,12 +133,12 @@ function showResult(side, r, applied) {
   rows.dataset.points = String(r.points) + r.field_ut + applied;
   const verdict = side.part("resultverdict");
   verdict.className = "resultverdict " + (r.passed ? "good" : "bad");
-  verdict.textContent = (r.passed ? "Good: " : "Not good enough: ") + "readings match to within "
-    + r.spread_after_ut.toFixed(1) + " µT (limit " + r.limit_ut + " µT)";
-  side.part("resultnote").textContent = "The three directions disagreed by " + r.asymmetry_ut.toFixed(1)
-    + " µT. Correcting that improved the match from " + r.spread_before_ut.toFixed(1) + " to "
-    + r.spread_after_ut.toFixed(1) + " µT. Measured field strength: " + r.field_ut.toFixed(1) + " µT."
-    + (applied ? "" : " Not applied: software calibration is off.");
+  verdict.textContent = (r.passed ? "Field-strength consistency is within the target: " : "Field-strength consistency is above the target: ")
+    + r.spread_after_ut.toFixed(1) + " µT variation for 95% of calibration readings (target " + r.limit_ut + " µT).";
+  side.part("resultnote").textContent = "Before correction, the largest and smallest fitted half-ranges differed by " + r.asymmetry_ut.toFixed(1)
+    + " µT. The 95% field-strength variation changed from " + r.spread_before_ut.toFixed(1) + " to "
+    + r.spread_after_ut.toFixed(1) + " µT. Fitted field strength: " + r.field_ut.toFixed(1) + " µT."
+    + (applied ? " These midpoint and scale corrections are enabled." : " These corrections are saved but disabled by the software-correction switch.");
   rows.textContent = "";
   ["X", "Y", "Z"].forEach((axis, i) => {
     const row = document.createElement("tr");
@@ -133,12 +169,12 @@ function showShared() {
 }
 
 function showLog(l) {
-  $("log").textContent = l.active ? "Stop log" : "Start log";
+  $("log").textContent = l.active ? "Stop recording" : "Start recording";
   $("log").className = l.active ? "primary" : "";
-  $("logstat").textContent = l.error ? l.error
-    : l.active ? "Logging " + l.name + " (" + l.seconds.toFixed(0) + " s)" : "";
+  $("logstat").textContent = recordingRequestError || l.error
+    || (l.active ? "Recording " + l.name + " (" + l.seconds.toFixed(0) + " s elapsed)" : "");
   const link = !l.active && l.last;
-  $("loglink").textContent = link ? "View " + l.last : "";
+  $("loglink").textContent = link ? "Open plots for recording " + l.last : "";
   if (link) $("loglink").href = "logs/" + l.last + "/plot.html";
   else $("loglink").removeAttribute("href");
 }
@@ -156,6 +192,15 @@ es.onmessage = e => {
 es.addEventListener("status", e => {
   state = JSON.parse(e.data);
   showShared();
+  $("startupstatus").textContent = !state.ambient_ready
+    ? "1. Switch the coil OFF. Calibrate magnetometers if needed, then measure the ambient field."
+    : !state.coil_on ? "2. Switch the electromagnet ON manually, then click Start tracking to confirm and begin."
+    : "Tracking is active by your confirmation; coil power is not sensed or controlled by this app.";
+  $("coilon").disabled = !state.ambient_ready;
+  $("coilon").textContent = state.coil_on
+    ? "Pause tracking (after switching the coil off)"
+    : "Start tracking (after switching the coil on)";
+  $("reconnectwarning").hidden = !state.reconnect_warning;
   positionState(state);
   SIDES.forEach(showSideState);
   // a sensor that's switched off gets no panel; one panel lays its view and charts side by side
@@ -164,13 +209,14 @@ es.addEventListener("status", e => {
 });
 (function frame() {
   const now = performance.now() / 1000;
+  const orientationQuat = state && state.orientation_quat;
   SIDES.forEach(side => {
     while (side.hist.length && side.hist[0].t < now - HIST_S) side.hist.shift();
-    drawView(side.part("view"), sampleOf(side));
+    drawView(side.part("view"), sampleOf(side), orientationQuat);
     const s = stateOf(side);
     if (s && s.tumbling) {
       // the shared orientation turns both balls, even if one sensor has no reading yet
-      drawSweep(side.part("sweep"), s, latest ? latest.quat : [1, 0, 0, 0], side.trail);
+      drawSweep(side.part("sweep"), s, orientationQuat || (latest ? latest.quat : [1, 0, 0, 0]), side.trail);
     }
   });
   drawCharts(HIST_S, state ? state.pass_ut : 5);

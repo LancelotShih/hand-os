@@ -1,10 +1,13 @@
 """What the calibrations save to disk.
 
-Used by: earth_cancel.py (load), tracking/tracker.py (save).  Uses: nothing.
+Used by: earth_cancel.py (load), tracking/tracker.py (save).
+Uses: shared validation and JSON persistence helpers.
 """
 
-import json
 from pathlib import Path
+
+from magtrack_src.persistence import read_json_object, write_json_atomic
+from magtrack_src.validation import orthogonal_matrix3, vector3
 
 
 class CalibrationFile:
@@ -12,38 +15,62 @@ class CalibrationFile:
         self.path = Path(path)
         self.mounting_path = Path(mounting_path) if mounting_path else None
         self.tumble_log_path = Path(tumble_log_path)
+        self.load_error = None
+        self.mounting_load_error = None
 
     def load(self):
-        """``(offset, bias, gains)`` from an earlier calibration."""
+        """Validated ``(offset, bias, gains)``; defaults if absent or invalid.
+
+        Missing bias/gains in older files retain their historical defaults.
+        Rejected files stay untouched and set ``load_error`` for startup status.
+        """
+        self.load_error = None
         try:
-            d = json.loads(self.path.read_text())
-            return (tuple(float(v) for v in d["offset"][:3]),
-                    tuple(float(v) for v in d.get("bias", (0.0, 0.0, 0.0))[:3]),
-                    tuple(float(v) for v in d.get("gains", (1.0, 1.0, 1.0))[:3]))
-        except (OSError, ValueError, KeyError, TypeError):
-            return None, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)
+            d = read_json_object(self.path)
+            return self._corrections(d["offset"], d.get("bias", (0.0, 0.0, 0.0)),
+                                     d.get("gains", (1.0, 1.0, 1.0)))
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            self.load_error = f"Saved sensor corrections were not loaded ({self.path.name}): {error}"
+        return None, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)
+
+    @staticmethod
+    def _corrections(offset, bias, gains):
+        offset, bias, gains = (vector3(offset, "offset"), vector3(bias, "gyroscope zero rate"),
+                               vector3(gains, "axis scale multipliers"))
+        if any(g <= 0.0 for g in gains):
+            raise ValueError("axis scale multipliers must be positive")
+        return offset, bias, gains
 
     def load_axes(self):
         """How the sensor sits on the board, or ``None`` if it was never fitted."""
-        try:
-            axes = json.loads(self.mounting_path.read_text())["axes"]
-            return [[float(v) for v in row[:3]] for row in axes[:3]]
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        self.mounting_load_error = None
+        if self.mounting_path is None:
             return None
+        try:
+            return orthogonal_matrix3(read_json_object(self.mounting_path)["axes"])
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            self.mounting_load_error = f"Saved sensor mounting was not loaded ({self.mounting_path.name}): {error}"
+        return None
 
     def save_axes(self, axes):
-        self.mounting_path.write_text(json.dumps({"axes": axes}, indent=2))
+        if self.mounting_path is None:
+            raise ValueError("No sensor mounting file is configured.")
+        write_json_atomic(self.mounting_path, {"axes": orthogonal_matrix3(axes)})
 
     def save(self, offset, bias, gains):
-        self.path.write_text(json.dumps(
-            {"offset": list(offset), "bias": list(bias), "gains": list(gains)}, indent=2))
+        offset, bias, gains = self._corrections(offset, bias, gains)
+        write_json_atomic(self.path, {"offset": offset, "bias": bias, "gains": gains})
 
     def clear(self):
-        """Forget every calibration.  Recorded logs and the mounting are kept."""
+        """Delete sensor corrections and the saved tumble result; keep recordings and mounting."""
         for path in (self.path, self.tumble_log_path):
             path.unlink(missing_ok=True)
 
     def log_tumble(self, points, result):
-        """Keep the raw readings of every attempt; ``result`` is ``None`` if it failed."""
-        self.tumble_log_path.write_text(json.dumps(
-            {"result": result, "points": [list(p) for p in points]}))
+        """Replace the last attempt log; ``result`` is ``None`` if it failed."""
+        write_json_atomic(self.tumble_log_path,
+                          {"result": result, "points": [vector3(p, "tumble reading") for p in points]})

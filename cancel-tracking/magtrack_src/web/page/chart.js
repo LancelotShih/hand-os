@@ -1,9 +1,9 @@
 // One plot per trace, per sensor, all on the same µT scale so they compare directly.
 const TRACES = [
-  ["trace-size", "|error|", s => s.size],
-  ["trace-x", "x", s => s.v[0]],
-  ["trace-y", "y", s => s.v[1]],
-  ["trace-z", "z", s => s.v[2]],
+  ["trace-size", "Field difference", s => s.size],
+  ["trace-x", "Field difference along x", s => s.v[0]],
+  ["trace-y", "Field difference along y", s => s.v[1]],
+  ["trace-z", "Field difference along z", s => s.v[2]],
 ];
 const NICE_TOPS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
 const PLOT_LEFT = 38, PLOT_TOP = 20, PLOT_BOTTOM = 4, AXIS_BOTTOM = 18;

@@ -1,7 +1,8 @@
 """Tumble calibration: finds the magnetometer's offset and axis asymmetry.
 
-Earth's field has one strength, so as the board turns every reading should sit
-on a sphere around zero.  The offset moves that sphere's centre and unequal axis
+The ambient field is assumed uniform in magnitude and direction and steady
+throughout a coil-off tumble. As the board turns, ideal readings therefore sit
+on a sphere around zero. The offset moves that sphere's centre and unequal axis
 sensitivity stretches it into an ellipsoid.  Fitting the shape measures both,
 from the magnetometer alone: no orientation is involved, so gyro error can't
 affect it.
@@ -63,7 +64,7 @@ def solve_linear(A, b):
     for c in range(n):
         p = max(range(c, n), key=lambda r: abs(M[r][c]))
         if abs(M[p][c]) < 1e-12:
-            raise ValueError("the readings don't cover enough directions")
+            raise ValueError("The calibration readings do not cover enough sensor orientations. Rotate the board through every side and try again.")
         M[c], M[p] = M[p], M[c]
         for r in range(n):
             if r != c:
@@ -91,7 +92,7 @@ def fit_ellipsoid(points):
                 AtA[i][j] += row[i] * row[j]
     a, b, c, d, e, f = solve_linear(AtA, Atb)
     if min(a, b, c) <= 0.0:
-        raise ValueError("the readings don't form a closed shape; turn through more directions")
+        raise ValueError("The readings cannot determine a complete calibration shape. Collect readings with every side of the board facing up and down.")
     g = 1.0 + d * d / (4 * a) + e * e / (4 * b) + f * f / (4 * c)
     center = (mean[0] - size * d / (2 * a), mean[1] - size * e / (2 * b), mean[2] - size * f / (2 * c))
     return center, tuple(size * math.sqrt(g / k) for k in (a, b, c))
@@ -110,11 +111,11 @@ def fit_tumble(points):
     center, radii = fit_ellipsoid(points)
     field = sum(radii) / 3.0
     if not TUMBLE_MIN_SWING_UT <= field <= TUMBLE_MAX_FIELD_UT:
-        raise ValueError(f"a {field:.0f} uT field isn't Earth's; turn the board through every "
+        raise ValueError(f"a {field:.0f} uT field is outside the calibration range; turn through every "
                          "direction, away from magnets")
     gains = tuple(field / r for r in radii)
     if not all(1.0 / TUMBLE_MAX_GAIN <= g <= TUMBLE_MAX_GAIN for g in gains):
-        raise ValueError("the shape is too stretched to be the sensor; keep it away "
+        raise ValueError("The required axis scale corrections exceed the allowed range. Keep the sensor away "
                          "from magnets and steel, and stay in one spot")
     after = spread_95(points, center, gains)
     return {"center": list(center), "radii": list(radii), "gains": list(gains),
