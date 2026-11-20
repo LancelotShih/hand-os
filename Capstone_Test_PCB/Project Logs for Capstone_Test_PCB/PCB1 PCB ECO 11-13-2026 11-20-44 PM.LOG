@@ -1,0 +1,14 @@
+Removed Pin From Net: NetName=I2C_SCL Pin=AC1-13
+Removed Pin From Net: NetName=I2C_SDA Pin=AC1-14
+Change Component Comment : Designator=R6 Old Comment=2K2  New Comment=DNP 2K2 
+Change Component Comment : Designator=R7 Old Comment=2K2  New Comment=DNP 2K2 
+Added Component: Designator=C9(CAPC1005X56X25LL10T15)
+Add component (AddParameter): Name = "Manufacturer"; Value = "AVX Interconnect / Elco"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Part Number"; Value = "04023C104JAT2A"; VariantName = "[No Variations]"
+Added Pin To Net: NetName=MAG2_SCL Pin=AC1-13
+Added Pin To Net: NetName=MAG2_SDA Pin=AC1-14
+Added Pin To Net: NetName=GND Pin=C9-1
+Added Pin To Net: NetName=3V3 Pin=C9-2
+Change Net Name : Old Net Name=MAG2_SCL New Net Name=MAG2_IMU_SCL
+Change Net Name : Old Net Name=MAG2_SDA New Net Name=MAG2_IMU_SDA
+Added Member To Class: ClassName=ICM_Mag Member=Component C9 100 nF

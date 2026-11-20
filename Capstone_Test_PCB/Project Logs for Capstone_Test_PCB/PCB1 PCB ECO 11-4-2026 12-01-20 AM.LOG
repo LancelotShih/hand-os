@@ -1,0 +1,113 @@
+Removed Pin From Net: NetName=GND Pin=AC?-1
+Removed Pin From Net: NetName=3V3 Pin=AC?-12
+Removed Pin From Net: NetName=3V3 Pin=IC?-4
+Remove Pin from Net: Failed to remove Pin
+Remove Pin from Net: Failed to remove Pin
+Removed Pin From Net: NetName=3V3 Pin=R?-2
+Remove Pin from Net: Failed to remove Pin
+Removed Member From Class: ClassName=ICM_Mag Member=J?
+Removed Member From Class: ClassName=ICM_Mag Member=R?
+Change Component Designator: OldDesignator=AC? NewDesignator=AC1
+Change Component Designator: OldDesignator=C? NewDesignator=C1
+Change Component Designator: OldDesignator=C? NewDesignator=C2
+Change Component Designator: OldDesignator=C? NewDesignator=C3
+Change Component Designator: OldDesignator=C? NewDesignator=C4
+Change Component Designator: OldDesignator=C? NewDesignator=C5
+Change Component Designator: OldDesignator=C? NewDesignator=C6
+Change Component Designator: OldDesignator=IC? NewDesignator=IC1
+Added Component: Designator=C7(FP-GRM188-0_1-e0_2_0_5-IPC_A)
+Add component (AddParameter): Name = "Capacitance"; Value = "2.2uF"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Case Code (Imperial)"; Value = "0603"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Case Code (Metric)"; Value = "1608"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Case/Package"; Value = "0603"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Dielectric"; Value = "X5R"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Height"; Value = "0.8mm"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Length"; Value = "0.063inch"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Max Operating Temperature"; Value = "85°C"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Min Operating Temperature"; Value = "-55°C"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mount"; Value = "Surface Mount"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Package Quantity"; Value = "4000"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Packaging"; Value = "Tape and Reel"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Termination"; Value = "SMD/SMT"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Thickness"; Value = "0.035inch"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Tolerance"; Value = "20%"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Voltage Rating"; Value = "35V"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Voltage Rating (DC)"; Value = "35V"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Weight"; Value = "0.000222oz"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Width"; Value = "0.031inch"; VariantName = "[No Variations]"
+Added Component: Designator=C8(CAPC2012X140N)
+Add component (AddParameter): Name = "Arrow Part Number"; Value = "CL21A106KOQNNNE"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Arrow Price/Stock"; Value = "https://www.arrow.com/en/products/cl21a106koqnnne/samsung-electro-mechanics?region=nac"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Datasheet Link"; Value = "https://datasheet.datasheetarchive.com/originals/distributors/Datasheets_SAMA/0289c6d4f30f89b64e7dd5b6a9ee99f0.pdf"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Height"; Value = "1.4mm"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Name"; Value = "SAMSUNG"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Part_Number"; Value = "CL21A106KOQNNNE"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Part Number"; Value = "187-CL21A106KOQNNNE"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Price/Stock"; Value = "https://www.mouser.co.uk/ProductDetail/Samsung-Electro-Mechanics/CL21A106KOQNNNE?qs=349EhDEZ59qKIX0T0PKtPw%3D%3D"; VariantName = "[No Variations]"
+Added Component: Designator=IC2(MMC5983MA)
+Add component (AddParameter): Name = "Arrow Part Number"; Value = "MMC5983MA"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Arrow Price/Stock"; Value = "https://www.arrow.com/en/products/mmc5983ma/memsic.html?utm_currency=USD&region=europe"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Datasheet Link"; Value = "https://www.mouser.com/datasheet/2/821/Memsic_09102019_MMC5983MA_Datasheet_Rev_A-1635338.pdf"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Height"; Value = "1mm"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Name"; Value = "MEMSIC"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Part_Number"; Value = "MMC5983MA"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Part Number"; Value = "438-MMC5983MA"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Price/Stock"; Value = "https://www.mouser.co.uk/ProductDetail/MEMSIC/MMC5983MA?qs=B6kkDfuK7%2FD5qasHMdEt2g%3D%3D"; VariantName = "[No Variations]"
+Added Component: Designator=J1(BM08BGHSTBTLFSN)
+Add component (AddParameter): Name = "Arrow Part Number"; Value = ""; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Arrow Price/Stock"; Value = ""; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Datasheet Link"; Value = "https://www.mouser.fr/datasheet/2/564/eGH-3476874.pdf"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Height"; Value = "4.2mm"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Name"; Value = "JST (JAPAN SOLDERLESS TERMINALS)"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer_Part_Number"; Value = "BM08B-GHS-TBT(LF)(SN)"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Part Number"; Value = "306-BM08BGHSTBTLFSNN"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Mouser Price/Stock"; Value = "https://www.mouser.co.uk/ProductDetail/JST-Commercial/BM08B-GHS-TBTLFSN?qs=cdbOS8ANM9BgERo6NlzSZA%3D%3D"; VariantName = "[No Variations]"
+Added Pin To Net: NetName=3V3 Pin=C7-1
+Added Pin To Net: NetName=GND Pin=C7-2
+Added Pin To Net: NetName=GND Pin=C8-1
+Added Pin To Net: NetName=3V3 Pin=IC2-2
+Added Pin To Net: NetName=GND Pin=IC2-9
+Added Pin To Net: NetName=GND Pin=IC2-11
+Added Pin To Net: NetName=3V3 Pin=IC2-13
+Added Pin To Net: NetName=GND Pin=J1-7
+Added Pin To Net: NetName=3V3 Pin=J1-8
+Added Pin To Net: NetName=GND Pin=J1-9
+Added Pin To Net: NetName=GND Pin=J1-10
+Change Net Name : Old Net Name=NetAC?_11 New Net Name=NetAC1_11
+Change Net Name : Old Net Name=NetC?_2 New Net Name=NetC2_2
+Added Pin To Net: NetName=NetC8_2 Pin=C8-2
+Added Pin To Net: NetName=NetC8_2 Pin=IC2-10
+Added Net: Name=NetC8_2
+Added Pin To Net: NetName=SPI_CLK Pin=AC1-13
+Added Pin To Net: NetName=SPI_CLK Pin=IC1-1
+Added Pin To Net: NetName=SPI_CLK Pin=IC2-1
+Added Pin To Net: NetName=SPI_CLK Pin=J1-6
+Added Net: Name=SPI_CLK
+Added Pin To Net: NetName=SPI_CS_IMU Pin=AC1-12
+Added Pin To Net: NetName=SPI_CS_IMU Pin=J1-3
+Added Net: Name=SPI_CS_IMU
+Added Pin To Net: NetName=SPI_CS_MAG1 Pin=IC1-4
+Added Pin To Net: NetName=SPI_CS_MAG1 Pin=J1-2
+Added Net: Name=SPI_CS_MAG1
+Added Pin To Net: NetName=SPI_CS_MAG2 Pin=IC2-4
+Added Pin To Net: NetName=SPI_CS_MAG2 Pin=J1-1
+Added Net: Name=SPI_CS_MAG2
+Added Pin To Net: NetName=SPI_MISO Pin=AC1-1
+Added Pin To Net: NetName=SPI_MISO Pin=IC1-5
+Added Pin To Net: NetName=SPI_MISO Pin=IC2-5
+Added Pin To Net: NetName=SPI_MISO Pin=J1-4
+Added Net: Name=SPI_MISO
+Added Pin To Net: NetName=SPI_MOSI Pin=AC1-14
+Added Pin To Net: NetName=SPI_MOSI Pin=IC1-16
+Added Pin To Net: NetName=SPI_MOSI Pin=IC2-16
+Added Pin To Net: NetName=SPI_MOSI Pin=J1-5
+Added Net: Name=SPI_MOSI
+Added Member To Class: ClassName=ICM_Mag Member=Component C1 2.2uF
+Added Member To Class: ClassName=ICM_Mag Member=Component C2 10uF
+Added Member To Class: ClassName=ICM_Mag Member=Component C3 CC0805KRX7R9BB104
+Added Member To Class: ClassName=ICM_Mag Member=Component C4 CC0805KRX7R9BB104
+Added Member To Class: ClassName=ICM_Mag Member=Component C5 2.2uF
+Added Member To Class: ClassName=ICM_Mag Member=Component C7 2.2uF
+Added Member To Class: ClassName=ICM_Mag Member=Component C8 10uF
+Added Member To Class: ClassName=ICM_Mag Member=Component IC2 MMC5983MA
+Added Member To Class: ClassName=ICM_Mag Member=Component J1 BM08B-GHS-TBT_LF__SN_
